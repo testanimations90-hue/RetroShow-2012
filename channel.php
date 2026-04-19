@@ -367,6 +367,12 @@ echo '</div>';
         <span class="profileTitles">Последний вход:</span> <?= $profile['last_login'] ?><br>
         <span class="profileTitles">Зарегистрирован:</span> <?= $profile['member_since'] ?><br>
         <span class="profileTitles">URL:</span> <a href="<?= $profile['url'] ?>" class="profileLink"><?= $profile['url'] ?></a>
+        <br>
+        <br>
+        <form action="outbox.php" method="get">
+          <input type="hidden" name="user" value="<?=htmlspecialchars($user)?>">
+          <input type="submit" value="Напишите мне!">
+        </form>
       </div>
     </div>
   </td>
@@ -879,14 +885,15 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
                     <td style="font-size:14px; font-weight:bold; color:#444; text-align:left; padding-left: 5px;  padding-bottom: 5px;">
                       Публичные видео // <?=htmlspecialchars($user)?>
                     </td>
+                    <?php if (!$is_owner || (int)$total > 0): ?>
                     <td style="font-size:12px; font-weight:bold; color:#444; text-align:right; padding-right:5px; padding-bottom: 7px; white-space:nowrap;">
                       Видео <?= ($offset + 1) ?>-<?= min($offset + $per_page, $total) ?> из <?= $total ?>
                     </td>
+                    <?php endif; ?>
                   </tr>
                 </table>
               </div>
               <?php if (count($videos) == 0): ?>
-                <div style="padding:20px; background:#f8f8f8; border:1px solid #ccc; color:#888;">Нет видео.</div>
               <?php else: ?>
 				<script type="text/javascript">
 					function showDescMore(id) {
@@ -1092,7 +1099,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
           <tr>
             <td><img src="img/pixel.gif" width="5" height="1"></td>
             <td width="170">
-              <div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="register.php">Зарегистрируйтесь бесплатно!</a></div>
+              <div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="help.php">Поделитесь видео с друзьями!</a></div>
             </td>
             <td><img src="img/pixel.gif" width="5" height="1"></td>
           </tr>
@@ -1108,8 +1115,6 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
             <?php foreach ($my_tags as $rt): ?>
             <div style="padding: 0px 0px 4px 0px; color: #999;">&raquo; <a href="results.php?search_type=tag&amp;search_query=<?=urlencode((string)$rt['tag'])?>"><?=htmlspecialchars((string)$rt['tag'])?></a></div>
             <?php endforeach; ?>
-          <?php else: ?>
-            <div style="padding: 0px 0px 4px 0px; color: #999;">Нет тегов.</div>
           <?php endif; ?>
         <?php endif; ?>
       </td>
@@ -1317,36 +1322,15 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
 <td style="padding-right: 5px;"><a href="help.php">Помощь</a></td>
     <?php else: ?>
 <?php $mail_unread = count_unread_mail($db, $_SESSION['user']); $mail_icon = $mail_unread > 0 ? 'img/mail_unread.gif' : 'img/mail.gif'; ?>
-<td>Привет, <strong><?=htmlspecialchars($_SESSION['user'])?></strong> <a href="my_messages.php"><img src="<?= htmlspecialchars($mail_icon, ENT_QUOTES, 'UTF-8') ?>" id="mailico" border="0" alt=""></a>&nbsp;(<a href="my_messages.php"><?= (int) $mail_unread ?></a>)</td>
-							<td class="myAccountContainer" style="padding: 0px 0px 0px 5px;">|<span style="white-space: nowrap;">
-<a href="account.php" onmouseover="showDropdownShow();">Мой аккаунт</a><a href="#" onclick="arrowClicked();return false;" onmouseover="document.arrowImg.src='/img/icon_menarrwdrpdwn_mouseover3_14x14.gif'" onmouseout="document.arrowImg.src='/img/icon_menarrwdrpdwn_regular_14x14.gif'"><img name="arrowImg" src="img/icon_menarrwdrpdwn_regular_14x14.gif" align="texttop" border="0" style="margin-left: 2px;"></a>
-
-<div id="myAccountDropdown" class="myAccountMenu" onmouseover="showDropdown();" onmouseout="hideDropwdown();" style="display: none; position: absolute;">
-	<div id="menuContainer" class="menuBox">
-		<?php $admins = @unserialize(RETROSHOW_ADMINS); if (in_array($_SESSION['user'], $admins, true)) {?>
-			<div class="menuBoxItem" id="MyAccountStaff" onmouseover="showDropdown();changeBGcolor(this,1);" onmouseout="changeBGcolor(this,0);">
-				<a href="admin.php" class="dropdownLinks"><span class="smallText">Админ-панель</span></a>
-			</div>
-		<?php } ?>
-		<div class="menuBoxItem" id="MyAccountMyVideo" onmouseover="showDropdown();changeBGcolor(this,1);" onmouseout="changeBGcolor(this,0);">
-			<a href="<?php echo isset($_SESSION['user']) ? 'channel.php?user=' . urlencode($_SESSION['user']) . '&tab=videos' : 'login.php'; ?>" class="dropdownLinks"><span class="smallText">Мои видео</span></a>
-		</div>
-		<div class="menuBoxItem <?php echo ($currentPage == 'favourites.php') ? 'active' : ''; ?>" id="MyAccountMyFavorites" onmouseover="showDropdown();changeBGcolor(this,1);" onmouseout="changeBGcolor(this,0);">
-			<a href="<?php echo (isset($_SESSION['user'])) ? 'favourites.php?user=' . urlencode($_SESSION['user']) : 'login.php'; ?>" class="dropdownLinks"><span class="smallText">Избранное</span></a>
-		</div>
-		<div class="menuBoxItem <?php echo ($currentPage == 'friends.php') ? 'active' : ''; ?>" id="MyAccountSubscription" onmouseover="showDropdown();changeBGcolor(this,1);" onmouseout="changeBGcolor(this,0);">
-			<a href="<?php echo (isset($_SESSION['user'])) ? 'friends.php?user=' . urlencode($_SESSION['user']) : 'login.php'; ?>" class="dropdownLinks"><span class="smallText">Мои друзья</span></a>
-		</div>
-
-	</div>
-</div>
-<script>
-toggleVisibility('myAccountDropdown',0);
-</script></span></td>
-<td style="padding: 0px 5px 0px 5px;">|</td>
-<td><a href="help.php">Помощь</a></td>
-<td style="padding: 0px 5px 0px 5px;">|</td>
-<td style="padding-right: 5px;"><a href="logout.php">Выйти</a></td>
+<td>Привет, <a href="channel.php?user=<?=urlencode($_SESSION['user'])?>"><?=htmlspecialchars($_SESSION['user'])?></a>!&nbsp;&nbsp;&nbsp;<a href="my_messages.php"><img src="<?= htmlspecialchars($mail_icon, ENT_QUOTES, 'UTF-8') ?>" id="mailico" border="0" alt=""></a>&nbsp;(<a href="my_messages.php"><?= (int) $mail_unread ?></a>)</td>					
+							<td class="myAccountContainer" style="padding: 0px 0px 0px 5px;">|&nbsp;
+							<?php $admins = @unserialize(RETROSHOW_ADMINS); if (in_array($_SESSION['user'], $admins, true)) {?>
+								<td><a href="admin.php" style="font-weight: bold;color: #24692A">Админ-панель</a></td>
+								<td style="padding: 0px 5px 0px 5px;">|</td>
+							<?php } ?>
+							<td><a href="logout.php">Выйти</a></td>
+							<td style="padding: 0px 5px 0px 5px;">|</td>
+							<td style="padding-right: 5px;"><a href="help.php">Помощь</a></td>
 							
     <?php endif; ?>
 </tr></table>
@@ -1466,9 +1450,6 @@ foreach ($filters as $filter_key => $filter_label) {
       <div style="padding: 0 5px 0 5px;">
 
 			<?php if (empty($videos)): ?>
-				<div style="background-color:#FFFFFF;padding: 6px; ">
-					Нет видео.
-				</div>
 			<?php else: ?>
 				<table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding: 0 0 10px 0;">
 				<?php
@@ -1629,7 +1610,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'comments' && isset($_GET['
                     : (strlen($comment_clean) > 120 ? substr($comment_clean, 0, 120) . '...' : $comment_clean);
                 $topic = 'Пользователь «' . $_SESSION['user'] . '» оставил комментарий на вашем канале.';
                 $body = $topic . "\n\n" . 'Текст:' . "\n" . $snippet;
-                add_mail($db, $user, $_SESSION['user'], $topic, $body, 'profile_comment', $new_pc_id, null, null, $user);
+                add_mail($db, $user, 'system', $topic, $body, 'profile_comment', $new_pc_id, null, null, $user);
             }
             header('Location: channel.php?user='.urlencode($user).'&tab=comments');
             exit;
@@ -1816,16 +1797,20 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
     <?php if (!isset($_SESSION['user'])): ?>
 <td><a href="register.php"><strong>Регистрация</strong></a></td>
 <td style="padding: 0px 5px 0px 5px;">|</td>
-<td><a href="login.php">Вход</a></td>
+<td><a href="login.php">Вход</a></td>x`
 <td style="padding: 0px 5px 0px 5px;">|</td>
 <td style="padding-right: 5px;"><a href="help.php">Помощь</a></td>
     <?php else: ?>
 <?php $mail_unread = count_unread_mail($db, $_SESSION['user']); $mail_icon = $mail_unread > 0 ? 'img/mail_unread.gif' : 'img/mail.gif'; ?>
-<td>Привет, <strong><?=htmlspecialchars($_SESSION['user'])?></strong> <a href="my_messages.php"><img src="<?= htmlspecialchars($mail_icon, ENT_QUOTES, 'UTF-8') ?>" id="mailico" border="0" alt=""></a>&nbsp;(<a href="my_messages.php"><?= (int) $mail_unread ?></a>)</td>
-<td style="padding: 0px 5px 0px 5px;">|</td>
-<td><a href="help.php">Помощь</a></td>
-<td style="padding: 0px 5px 0px 5px;">|</td>
-<td style="padding-right: 5px;"><a href="logout.php">Выйти</a></td>
+<td>Привет, <a href="channel.php?user=<?=urlencode($_SESSION['user'])?>"><?=htmlspecialchars($_SESSION['user'])?></a>!&nbsp;&nbsp;&nbsp;<a href="my_messages.php"><img src="<?= htmlspecialchars($mail_icon, ENT_QUOTES, 'UTF-8') ?>" id="mailico" border="0" alt=""></a>&nbsp;(<a href="my_messages.php"><?= (int) $mail_unread ?></a>)</td>					
+							<td class="myAccountContainer" style="padding: 0px 0px 0px 5px;">|&nbsp;
+							<?php $admins = @unserialize(RETROSHOW_ADMINS); if (in_array($_SESSION['user'], $admins, true)) {?>
+								<td><a href="admin.php" style="font-weight: bold;color: #24692A">Админ-панель</a></td>
+								<td style="padding: 0px 5px 0px 5px;">|</td>
+							<?php } ?>
+							<td><a href="logout.php">Выйти</a></td>
+							<td style="padding: 0px 5px 0px 5px;">|</td>
+							<td style="padding-right: 5px;"><a href="help.php">Помощь</a></td>
     <?php endif; ?>
 </tr></table>
 </td></tr></table>
@@ -1906,7 +1891,6 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
       <div class="moduleTitle"><?=( $user ? 'Видео от ' . htmlspecialchars($user) : $filter_name . ' видео' )?></div>
     </div>
     <?php if (count($videos) == 0): ?>
-      <div style="padding:20px; background:#f8f8f8; border:1px solid #ccc; color:#888;">Нет видео.</div>
     <?php else: ?>
       <?php foreach ($videos as $row): ?>
         <div class="moduleEntry">

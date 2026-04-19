@@ -159,6 +159,36 @@ $paged_fav_list = array_slice($fav_list, $offset, $per_page);
 $is_own = isset($_SESSION['user']) && $user === $_SESSION['user'];
 $user_disp = htmlspecialchars($user);
 
+$my_tags = [];
+if ($is_own && !empty($videos)) {
+    $tag_stats = [];
+    foreach ($videos as $row) {
+        $tags_raw = trim((string)($row['tags'] ?? ''));
+        if ($tags_raw === '') continue;
+        $parts = preg_split('/\s+/', $tags_raw, -1, PREG_SPLIT_NO_EMPTY);
+        if (!is_array($parts)) continue;
+        foreach ($parts as $t) {
+            $tag = trim((string)$t);
+            if ($tag === '') continue;
+            $k = function_exists('mb_strtolower') ? mb_strtolower($tag, 'UTF-8') : strtolower($tag);
+            if (!isset($tag_stats[$k])) {
+                $tag_stats[$k] = ['tag' => $tag, 'count' => 0];
+            }
+            $tag_stats[$k]['count']++;
+        }
+    }
+    if (!empty($tag_stats)) {
+        $tag_stats = array_values($tag_stats);
+        usort($tag_stats, function ($a, $b) {
+            if ((int)$a['count'] === (int)$b['count']) {
+                return strcmp((string)$a['tag'], (string)$b['tag']);
+            }
+            return ((int)$b['count'] - (int)$a['count']);
+        });
+        $my_tags = array_slice($tag_stats, 0, 20);
+    }
+}
+
 showHeader('Избранное');
 ?>
 
@@ -219,16 +249,20 @@ echo '</div>';
                   <td style="font-size:14px; font-weight:bold; color:#444; text-align:left; padding-left: 5px;  padding-bottom: 5px;">
                     <?=($is_own ? 'Мои избранные видео' : 'Избранные // '.$user_disp)?>
                   </td>
+                  <?php if (!$is_own || (int)$fav_total > 0): ?>
                   <td style="font-size:12px; font-weight:bold; color:#444; text-align:right; padding-right:5px; padding-bottom: 7px; white-space:nowrap;">
                     Видео <?= $fav_total ? ($offset + 1) . '-' . min($offset + $per_page, $fav_total) . ' из ' . $fav_total : '0 из 0' ?>
                   </td>
+                  <?php endif; ?>
                 </tr>
               </table>
             </div>
             <?php if (!$fav_list): ?>
-              <div style="padding:20px; background:#f8f8f8; border:1px solid #ccc; color:#888;">
-                <?=($is_own ? 'У вас нет избранных видео.' : 'У пользователя '.$user_disp.' нет избранных видео.')?>
-              </div>
+              <?php if (!$is_own): ?>
+                <div style="padding:10px;font-size:13px;color:#666;">
+                Этот пользователь не добавил ничего в избранное.
+                </div>
+              <?php endif; ?>
             <?php else: ?>
               <?php foreach ($paged_fav_list as $vid): if (empty($videos[$vid])) continue; $video = $videos[$vid];
                     $vid_link = htmlspecialchars($video['public_id'] ?? $video['id']);
@@ -352,25 +386,14 @@ echo '</div>';
       </table>
     </td>
     <td width="180">
-      <table width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFEEBB">
-        <tr>
-          <td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-          <td><img src="img/pixel.gif" width="1" height="5"></td>
-          <td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-        </tr>
-        <tr>
-          <td><img src="img/pixel.gif" width="5" height="1"></td>
-          <td width="170">
-            <div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="register.php">Зарегистрируйтесь бесплатно!</a></div>
-          </td>
-          <td><img src="img/pixel.gif" width="5" height="1"></td>
-        </tr>
-        <tr>
-          <td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-          <td><img src="img/pixel.gif" width="1" height="5"></td>
-          <td><img src="img/box_login_br.gif" width="5" height="5"></td>
-        </tr>
-      </table>
+    <?php if ($is_own): ?>
+          <div style="font-weight: bold; color: #333; margin: 0px 0px 5px 0px;">Любимые теги:</div>
+          <?php if (!empty($my_tags)): ?>
+            <?php foreach ($my_tags as $rt): ?>
+            <div style="padding: 0px 0px 4px 0px; color: #999;">&raquo; <a href="results.php?search_type=tag&amp;search_query=<?=urlencode((string)$rt['tag'])?>"><?=htmlspecialchars((string)$rt['tag'])?></a></div>
+            <?php endforeach; ?>
+          <?php endif; ?>
+        <?php endif; ?>
     </td>
   </tr>
 </table>

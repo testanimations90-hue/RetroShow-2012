@@ -48,10 +48,18 @@ if ($view_user) {
     $stmtFr = $db->prepare("SELECT friend FROM user_friends WHERE user = ? ORDER BY created_at DESC");
     $stmtFr->execute([$view_user]);
     $friends = $stmtFr->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
-    if (isset($_SESSION['user']) && $_SESSION['user'] === $view_user && isset($_GET['del']) && in_array($_GET['del'], $friends)) {
-        $db->prepare("DELETE FROM user_friends WHERE user = ? AND friend = ?")->execute([$view_user, $_GET['del']]);
-        header("Location: friends.php?user=" . urlencode($view_user));
-        exit;
+    if (isset($_SESSION['user']) && $_SESSION['user'] === $view_user) {
+        $del_friend = '';
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remove_friend'])) {
+            $del_friend = trim((string)($_POST['friend'] ?? ''));
+        } elseif (isset($_GET['del'])) {
+            $del_friend = trim((string)$_GET['del']);
+        }
+        if ($del_friend !== '' && in_array($del_friend, $friends, true)) {
+            $db->prepare("DELETE FROM user_friends WHERE user = ? AND friend = ?")->execute([$view_user, $del_friend]);
+            header("Location: friends.php?user=" . urlencode($view_user));
+            exit;
+        }
     }
 }
 $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
@@ -117,21 +125,22 @@ echo '</div>';
                 <td style="font-size:14px; font-weight:bold; color:#444; text-align:left; padding-left: 5px;  padding-bottom: 5px;">
                   Друзья // <?=htmlspecialchars($view_user)?>
                 </td>
+                <?php if (!$is_own || (int)$total_friends > 0): ?>
                 <td style="font-size:12px; font-weight:bold; color:#444; text-align:right; padding-right:5px; padding-bottom: 7px; white-space:nowrap;">
                   Друзья <?= $total_friends ? ($offset + 1) . '-' . min($offset + $per_page, $total_friends) . ' из ' . $total_friends : '0 из 0' ?>
                 </td>
+                <?php endif; ?>
               </tr>
             </table>
           </div>
 <?php
 if (!$view_user) {
     echo '<div style="padding:20px; text-align:center; color:#888; font-size:14px; background:#fff;">Войдите или выберите пользователя для просмотра друзей.</div>';
-} elseif (count($friends) == 0) {
-    echo "<div style='padding:20px; background:#f8f8f8; border:1px solid #ccc; color:#888;'>
-    " . ($is_own ? 'У вас нет друзей.' : 'У пользователя '.$user_disp.' нет друзей.') . "
-  </div>";
 
 } else {
+    if (!$is_own && (int)$total_friends === 0) {
+        echo '<div style="padding:10px;font-size:13px;color:#666;">Этот пользователь не добавил ни одного друга.</div>';
+    }
     foreach ($paged_friends as $friend) {
         $videos_count = 0;
         $favs_count = 0;
@@ -149,36 +158,35 @@ if (!$view_user) {
             $stmtFr3->execute([$friend]);
             $fr_count = (int)$stmtFr3->fetchColumn();
         } catch (Exception $e) { $fr_count = 0; }
-        echo '<div style="background-color:#DDD; background-image:url(\'img/table_results_bg.gif\'); background-position:left top; background-repeat:repeat-x; border-bottom:1px dashed #999999; padding:10px;">';
+        echo '<div class="moduleEntry">';
         echo '<table width="565" cellpadding="0" cellspacing="0" border="0">';
         echo '<tr valign="top">';
-		
-        $friend_user_data = null;
-        try {
-            $stmt_friend = $db->prepare('SELECT profile_icon FROM users WHERE login = ?');
-            $stmt_friend->execute([$friend]);
-            $friend_user_data = $stmt_friend->fetch(PDO::FETCH_ASSOC);
-        } catch (Exception $e) {
-            $friend_user_data = null;
-        }
-        echo '<td width="90"><a href="channel.php?user='.urlencode($friend).'"><img src="'.get_profile_icon($friend, $friend_user_data['profile_icon'] ?? '0').'" class="moduleEntryThumb" width="90" height="70" style="border:1px solid #888;"></a></td>';
-        echo '<td width="100%" style="padding-left:8px;">';
-        echo '<div style="font-size:13px; font-weight:bold;"><a href="channel.php?user='.urlencode($friend).'" style="color:#0033cc; text-decoration:underline;">'.htmlspecialchars($friend).'</a></div>';
-        echo '<div style="font-size:11px; margin:2px 0 2px 0;">';
-        echo '<a href="channel.php?user='.urlencode($friend).'&tab=videos" style="color:#0033cc; font-size:12px; text-decoration:underline;">Видео</a> ('.$videos_count.') | ';
-        echo '<a href="favourites.php?user='.urlencode($friend).'" style="color:#0033cc; font-size:12px; text-decoration:underline;">Избранное</a> ('.$favs_count.') | ';
-        echo '<a href="friends.php?user='.urlencode($friend).'" style="color:#0033cc; font-size:12px; text-decoration:underline;">Друзья</a> ('.$fr_count.')';
-        echo '</div>';
-        if (isset($_SESSION['user']) && $_SESSION['user'] === $view_user) {
-            echo '<div style="font-size:11px; margin:2px 0 2px 0;">';
-            echo '<form method="get" style="margin:0; display:inline;">';
-            echo '<input type="hidden" name="user" value="'.htmlspecialchars($view_user).'">';
-            echo '<input type="hidden" name="del" value="'.htmlspecialchars($friend).'">';
-            echo '<a href="#" onclick="this.parentNode.submit();return false;" style="color:#0033cc; text-decoration:underline; font-size:12px; margin:0; padding:0; cursor:pointer;">Удалить из друзей</a>';
+
+        echo '<td align="center" width="150">';
+        if ($is_own) {
+            echo '<form method="post" action="friends.php?user='.urlencode($view_user).'" style="margin:0;">';
+            echo '<input type="hidden" name="remove_friend" value="1">';
+            echo '<input type="hidden" name="friend" value="'.htmlspecialchars($friend, ENT_QUOTES, 'UTF-8').'">';
+            echo '<input type="submit" value="Удалить из друзей" style="margin-top:5px;">';
             echo '</form>';
-            echo '</div>';
+        } else {
+            echo '&nbsp;';
         }
         echo '</td>';
+
+        echo '<td width="100%">';
+        echo '<div class="moduleEntryTitle" style="margin-bottom:5px;">';
+        echo '<a href="channel.php?user='.urlencode($friend).'">'.htmlspecialchars($friend, ENT_QUOTES, 'UTF-8').'</a> ';
+        echo '<span style="color:#777;font-size:11px;">(Друзья)</span>';
+        echo '</div>';
+
+        echo '<div class="moduleEntryDescription">';
+        echo '<a href="channel.php?user='.urlencode($friend).'&tab=videos">Видео</a> ('.$videos_count.') | ';
+        echo '<a href="favourites.php?user='.urlencode($friend).'">Избранное</a> ('.$favs_count.') | ';
+        echo '<a href="friends.php?user='.urlencode($friend).'">Друзья</a> ('.$fr_count.')';
+        echo '</div>';
+        echo '</td>';
+
         echo '</tr>';
         echo '</table>';
         echo '</div>';
@@ -224,6 +232,7 @@ if (!$view_user) {
     </table>
   </td>
   <td width="180">
+    <?php if ($is_own) { ?>
     <table width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFEEBB">
       <tr>
         <td><img src="img/box_login_tl.gif" width="5" height="5"></td>
@@ -233,7 +242,7 @@ if (!$view_user) {
       <tr>
         <td><img src="img/pixel.gif" width="5" height="1"></td>
         <td width="170">
-          <div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="register.php">Зарегистрируйтесь бесплатно!</a></div>
+          <div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="help.php">Поделитесь видео с друзьями!</a></div>
         </td>
         <td><img src="img/pixel.gif" width="5" height="1"></td>
       </tr>
@@ -243,6 +252,7 @@ if (!$view_user) {
         <td><img src="img/box_login_br.gif" width="5" height="5"></td>
       </tr>
     </table>
+    <?php } ?>
   </td>
 </tr>
 </table>

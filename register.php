@@ -34,6 +34,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['field_command'] ??
 		$error = 'Пароли не совпадают.';
 	} elseif (strlen($password1) < 6) {
 		$error = 'Пароль должен содержать минимум 6 символов.';
+	} elseif (mb_strtolower($username, 'UTF-8') === 'system') {
+		$error = 'Пользователь с таким именем уже существует.';
 	} else {
 		try {
 			$stmt = $db->prepare('SELECT 1 FROM users WHERE login = ? LIMIT 1');

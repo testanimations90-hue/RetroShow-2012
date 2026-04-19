@@ -51,6 +51,15 @@ try {
 </style>
 <table width="600px" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#CCCCCC">
 <tbody>
+<div class="tableSubTitle">Входящие сообщения</div>
+<table width="45%" align="center" cellpadding="5" cellspacing="0" border="0">
+         <tbody><tr align="center">
+		 <td align="center" colspan="3">
+                <a href="my_messages.php" class="bold">Входящие</a> | <a href="outbox.php">Исходящие</a>
+            </td></tr>
+            </tbody></table>
+<table width="91%" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#CCCCCC">
+<tbody>
 <tr>
 	<td><img src="img/box_login_tl.gif" width="5" height="5" alt=""></td>
 	<td width="100%"><img src="img/pixel.gif" width="1" height="5" alt=""></td>
