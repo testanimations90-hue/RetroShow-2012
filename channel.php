@@ -799,12 +799,47 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
   $total_pages = ceil($total / $per_page);
 
   if ($is_owner) {
-    $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file, tags, private FROM videos WHERE user = ? ORDER BY id DESC LIMIT $offset, $per_page");
+    $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file, tags, private, original_filename FROM videos WHERE user = ? ORDER BY id DESC LIMIT $offset, $per_page");
   } else {
-    $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file, tags, private FROM videos WHERE user = ? AND private = 0 ORDER BY id DESC LIMIT $offset, $per_page");
+    $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file, tags, private, original_filename FROM videos WHERE user = ? AND private = 0 ORDER BY id DESC LIMIT $offset, $per_page");
   }
   $stmt->execute([$user]);
   $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+  $my_tags = [];
+  try {
+    $stmtTags = $db->prepare("SELECT tags FROM videos WHERE user = ? AND private = 0 ORDER BY id DESC");
+    $stmtTags->execute([$user]);
+    $tag_rows = $stmtTags->fetchAll(PDO::FETCH_ASSOC);
+    $tag_stats = [];
+    foreach ($tag_rows as $tr) {
+      $raw_tags = trim((string)($tr['tags'] ?? ''));
+      if ($raw_tags === '') continue;
+      $parts = preg_split('/\s+/', $raw_tags, -1, PREG_SPLIT_NO_EMPTY);
+      if (!is_array($parts)) continue;
+      foreach ($parts as $tag) {
+        $tag = trim((string)$tag);
+        if ($tag === '') continue;
+        $k = function_exists('mb_strtolower') ? mb_strtolower($tag, 'UTF-8') : strtolower($tag);
+        if (!isset($tag_stats[$k])) {
+          $tag_stats[$k] = ['tag' => $tag, 'count' => 0];
+        }
+        $tag_stats[$k]['count']++;
+      }
+    }
+    if (!empty($tag_stats)) {
+      usort($tag_stats, function ($a, $b) {
+        if ((int)$a['count'] === (int)$b['count']) {
+          return strcmp((string)$a['tag'], (string)$b['tag']);
+        }
+        return ((int)$b['count'] - (int)$a['count']);
+      });
+      $my_tags = array_slice($tag_stats, 0, 20);
+    }
+  } catch (Exception $e) {
+    $my_tags = [];
+  }
+
   showHeader('Публичные видео // ' . htmlspecialchars($user));
     ?>
   <link rel="stylesheet" href="img/styles.css" type="text/css">
@@ -894,9 +929,6 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
                           <div class="moduleEntryTitle">
                             <a href="video.php?id=<?=$vid_link?>"><?=htmlspecialchars($row['title'])?></a>
                           </div>
-                          <?php if (!empty($row['private']) && $is_owner): ?>
-                          <div style="font-size:12px; color:#cc0000; font-weight:bold; margin:2px 0 4px 0;"><i>(ПРИВАТНОЕ ВИДЕО!)</i></div>
-                          <?php endif; ?>
                           <div class="moduleEntryDescription">
                           <span id="<?= $desc_id ?>-short">
                             <?= $desc_short ?><?php if (mb_strlen($desc) > 30): ?> <a href="#" onclick="return showDescMore('<?= $desc_id ?>');" style="color:#0033cc; font-size:11px;">(ещё)</a><?php endif; ?>
@@ -945,6 +977,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
                           </div>
                           <?= channel_render_avg_stars_html($ra, $rc) ?>
                           </div>
+
                           <?php if ($is_owner): ?>
                           </td>
                           <td valign="top" width="133" style="padding-left:4px;">
@@ -957,7 +990,48 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
       Сделать аватаром</button>
     <?php endif; ?>
                           </td>
-                          </tr></table>
+                          </tr>
+                          <?php endif; ?>
+                          <?php if ($is_owner): ?>
+                          <tr>
+                          <td colspan="2">
+                          
+
+                          <div style="margin:5px 0;padding:0;height:0;font-size:1px;line-height:1px;border:0;border-bottom:1px dashed #999999;overflow:hidden;"></div>
+                          <?php
+                          $fn_disp = trim((string)($row['original_filename'] ?? ''));
+                          if ($fn_disp === '') {
+                              $fn_disp = (string)($row['file'] ?? '');
+                              $fn_disp = $fn_disp !== '' ? basename($fn_disp) : 'video.mp4';
+                          }
+                          $pid_share = (string)($row['public_id'] ?? '');
+                          $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+                          $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
+                          $script = (string)($_SERVER['SCRIPT_NAME'] ?? '');
+                          $dir = str_replace('\\', '/', dirname($script));
+                          if ($dir === '.' || $dir === '/') {
+                              $indexPath = '/';
+                              $videoPath = '/video.php';
+                          } else {
+                              $indexPath = rtrim($dir, '/') . '/';
+                              $videoPath = rtrim($dir, '/') . '/video.php';
+                          }
+                          if ($pid_share !== '' && preg_match('/^[A-Za-z0-9_-]{6,20}$/', $pid_share)) {
+                              $share_video_url = $scheme . '://' . $host . $indexPath . '?v=' . rawurlencode($pid_share);
+                          } else {
+                              $share_video_url = $scheme . '://' . $host . $videoPath . '?id=' . rawurlencode((string)($row['public_id'] ?? $row['id']));
+                          }
+                          ?>
+                          <div class="moduleEntryDetails">Файл: <?=htmlspecialchars($fn_disp)?>
+                            <div class="moduleEntryDetails">Статус: <?php if ($row['private'] == 0): ?> <span style="color:#24692A;font-weight:bold">Публичное видео</span> <?php else: ?> <span style="color:#8C172A;font-weight:bold">Приватное видео</span> <?php endif; ?></div>
+                            <input name="video_link" type="text" onclick="javascript:document.linkForm.video_link.focus();document.linkForm.video_link.select();" value="<?= htmlspecialchars($share_video_url, ENT_QUOTES, 'UTF-8') ?>" size="50" readonly="true" style="font-size: 10px; text-align: center;">
+                            <div class="formFieldInfo">Поделитесь этим видео с друзьями! Скопируйте и вставьте ссылку выше в Email или на сайт.</div>
+                          </div>
+                            
+                          
+                          </td>
+                          </tr>
+                          </table>
                           <?php endif; ?>
                         </td>
                       </tr>
@@ -1026,6 +1100,16 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
             <td><img src="img/box_login_br.gif" width="5" height="5"></td>
           </tr>
         </table>
+        <?php if ($is_owner): ?>
+          <div style="font-weight: bold; color: #333; margin: 10px 0px 5px 0px;">Мои теги:</div>
+          <?php if (!empty($my_tags)): ?>
+            <?php foreach ($my_tags as $rt): ?>
+            <div style="padding: 0px 0px 4px 0px; color: #999;">&raquo; <a href="results.php?search_type=tag&amp;search_query=<?=urlencode((string)$rt['tag'])?>"><?=htmlspecialchars((string)$rt['tag'])?></a></div>
+            <?php endforeach; ?>
+          <?php else: ?>
+            <div style="padding: 0px 0px 4px 0px; color: #999;">Нет тегов.</div>
+          <?php endif; ?>
+        <?php endif; ?>
       </td>
     </tr>
     </table>

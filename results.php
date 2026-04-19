@@ -460,6 +460,9 @@ showHeader('Результаты поиска: ' . htmlspecialchars($search_quer
       };
     ?>
     <td width="180">
+    <a href="rss.php?tag=<?=urlencode($search_query)?>"><img src="img/rss.gif" width="36" height="14" border="0" style="vertical-align: text-top;"></a>
+    <span style="font-size: 11px; margin-right: 3px;"><a href="rss.php?tag=<?=urlencode($search_query)?>">Лента для тега // <?=htmlspecialchars($search_query)?></a></span>
+    <div style="padding-top: 10px;">
     <table class="roundedTable" width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEEEDD">
             <tbody>
             <tr>
@@ -493,6 +496,7 @@ showHeader('Результаты поиска: ' . htmlspecialchars($search_quer
             </tr>
             </tbody>
     </table>
+    </div>
     <?php if (!empty($related_tags)): ?>
       <div style="font-weight: bold; color: #333; margin: 4px 0px 5px 0px;">Похожие теги:</div>
       <?php foreach ($related_tags as $rt): ?>

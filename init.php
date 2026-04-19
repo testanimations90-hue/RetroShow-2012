@@ -172,6 +172,26 @@ function video_uploads_file_base($video_id, $public_id = '') {
     return (string)$id;
 }
 
+function video_original_upload_name($name): string {
+    $name = (string)$name;
+    if ($name === '') {
+        return '';
+    }
+    $base = basename(str_replace('\\', '/', $name));
+    $base = preg_replace('/[\x00-\x1f\x7f]/', '', $base);
+    if ($base === '') {
+        return '';
+    }
+    if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+        if (mb_strlen($base, 'UTF-8') > 255) {
+            $base = mb_substr($base, 0, 255, 'UTF-8');
+        }
+    } elseif (strlen($base) > 255) {
+        $base = substr($base, 0, 255);
+    }
+    return trim($base);
+}
+
 function video_public_id_from_get() {
     foreach (['id', 'public_id', 'video_id'] as $key) {
         if (!isset($_GET[$key])) {
@@ -393,9 +413,17 @@ $db->exec("CREATE TABLE IF NOT EXISTS videos (
     tags TEXT,
     time TEXT,
     views INTEGER DEFAULT 0,
+    original_filename TEXT,
     FOREIGN KEY (user) REFERENCES users(login)
 )");
 
+try {
+    $colsV = $db->query("PRAGMA table_info(videos)")->fetchAll(PDO::FETCH_ASSOC);
+    if (!in_array('original_filename', array_column($colsV, 'name'), true)) {
+        $db->exec("ALTER TABLE videos ADD COLUMN original_filename TEXT");
+    }
+} catch (Exception $e) {
+}
 
 $db->exec("CREATE TABLE IF NOT EXISTS comments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -485,8 +513,16 @@ $db->exec("CREATE TABLE IF NOT EXISTS video_processing_queue (
     finished_at INTEGER,
     status TEXT NOT NULL DEFAULT 'pending',
     attempts INTEGER NOT NULL DEFAULT 0,
-    last_error TEXT
+    last_error TEXT,
+    original_filename TEXT
 )");
+try {
+    $colsQ = $db->query("PRAGMA table_info(video_processing_queue)")->fetchAll(PDO::FETCH_ASSOC);
+    if (!in_array('original_filename', array_column($colsQ, 'name'), true)) {
+        $db->exec("ALTER TABLE video_processing_queue ADD COLUMN original_filename TEXT");
+    }
+} catch (Exception $e) {
+}
 try { $db->exec("CREATE INDEX IF NOT EXISTS idx_video_processing_queue_status ON video_processing_queue (status, created_at)"); } catch (Exception $e) {}
 try { $db->exec("CREATE INDEX IF NOT EXISTS idx_video_processing_queue_public_id ON video_processing_queue (public_id)"); } catch (Exception $e) {}
 

@@ -2,7 +2,18 @@
 ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
 error_reporting(E_ALL);
-include("init.php"); 
+include("init.php");
+
+if (isset($_GET['v']) && (string)$_GET['v'] !== '') {
+    $v = trim((string)$_GET['v']);
+    if (preg_match('/^[A-Za-z0-9_-]{6,20}$/', $v)) {
+        header('Location: video.php?id=' . rawurlencode($v), true, 302);
+        exit;
+    }
+    header('Location: index.php', true, 302);
+    exit;
+}
+
 include("template.php");
 require_once __DIR__ . '/duration_helper.php';
 

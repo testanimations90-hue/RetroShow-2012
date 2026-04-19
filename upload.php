@@ -136,6 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $p === 2) {
 
         $video_ext = strtolower(pathinfo($_FILES['video']['name'], PATHINFO_EXTENSION));
         $preview_ext = 'jpg';
+        $orig_upload_name = video_original_upload_name($_FILES['video']['name'] ?? '');
 
         $temp_video = 'uploads/temp_' . $file_base . '.' . $video_ext;
         $final_video = 'uploads/' . $file_base . '.mp4';
@@ -158,8 +159,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $p === 2) {
                     try {
                         $stQ = $db->prepare("
                             INSERT INTO video_processing_queue
-                            (public_id, user, title, description, tags, broadcast, source_file, created_at, status)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                            (public_id, user, title, description, tags, broadcast, source_file, created_at, status, original_filename)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
                         ");
                         $stQ->execute([
                             $public_id,
@@ -169,7 +170,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $p === 2) {
                             (string)$tags,
                             ($broadcast === 'private' ? 'private' : 'public'),
                             (string)$queue_video,
-                            time()
+                            time(),
+                            $orig_upload_name !== '' ? $orig_upload_name : null,
                         ]);
                         $queue_id = (int)$db->lastInsertId();
                         notify_processing_worker($queue_id);
@@ -319,8 +321,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $p === 2) {
                 $time = date("d.m.Y, H:i");
                 $is_private = ($broadcast === 'private') ? 1 : 0;
                 $tags = normalize_tags($tags ?? '');
-                $stmt = $db->prepare("INSERT INTO videos (public_id, title, description, file, preview, user, time, private, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                $stmt->execute([$public_id, $title, $description, $final_video, $preview_file, $_SESSION['user'], $time, $is_private, $tags]);
+                $stmt = $db->prepare("INSERT INTO videos (public_id, title, description, file, preview, user, time, private, tags, original_filename) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$public_id, $title, $description, $final_video, $preview_file, $_SESSION['user'], $time, $is_private, $tags, $orig_upload_name !== '' ? $orig_upload_name : null]);
                 $inserted_id = (int)$db->lastInsertId();
                 log_event('upload_video', [
                     'upload_user' => (string)$_SESSION['user'],
@@ -343,7 +345,6 @@ showHeader("Загрузка видео");
 ?>
 <style type="text/css">
 .upload-step-table { border-collapse: separate; border-spacing: 0; margin-top: 10px; }
-.upload-step-title { font-size: 15px; color: #B94A00; font-weight: bold; border-bottom: 1px dashed #B94A00; padding-bottom: 4px; margin-bottom: 10px; }
 .upload-label { text-align: right; padding-right: 10px; font-size: 13px; color: #333; vertical-align: top; }
 .upload-input { text-align: left; }
 .upload-btn { margin-top: 10px; }
@@ -352,19 +353,38 @@ showHeader("Загрузка видео");
 .upload-bluebox .rules { color: #003399; font-size: 12px; }
 .upload-radio { margin-right: 8px; }
 .upload-note { color: #333; font-size: 12px; margin-top: 30px; text-align: center; }
+.formHighlight {
+	background-image: url(img/table_results_selected_bg.gif);
+	background-repeat: repeat-x;
+	background-color: #FFFFCC;
+	background-position: left top;
+	border: 1px dashed #CCCC66;
+	padding: 7px;
+	padding-bottom: 10px;
+	margin-bottom: 5px;
+}
+
+.formHighlightText {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 11px;
+	font-weight: normal;
+	color: #666633;
+	margin-top: 5px;
+	margin-left: 6px;
+}
 </style>
 
 
 <table width="790" align="center" cellpadding="0" cellspacing="0" border="0">
 <tr valign="top">
 <?php if ($p === 1): ?>
-  <div class="upload-step-title">Загрузка видео (Шаг 1 из 2)</div>
+  <div class="tableSubTitle">Загрузка видео (Шаг 1 из 2)</div>
   <?php if ($error): ?><div class="errorBox"><?=$error?></div><?php endif; ?>
   <?php if ($success): ?><div class="confirmBox"><?=$success?></div><?php endif; ?>
   <form method="post" action="upload.php?p=1">
-    <table class="upload-step-table" width="500">
+    <table class="upload-step-table" width="100%">
       <tr>
-        <td class="upload-label" width="120"><b>Название:</b></td>
+        <td class="upload-label" width="200"><b>Название:</b></td>
         <td class="upload-input"><input type="text" name="title" value="<?=htmlspecialchars($title)?>" style="width: 250px; font-size: 13px;"></td>
       </tr>
       <tr>
@@ -378,7 +398,7 @@ showHeader("Загрузка видео");
           <br>
           <span class="smallText"><b>Введите один или несколько тегов, описывающих ваше видео, через пробел.</b>
           <br>
-          Лучше использовать релевантные ключевые слова, чтобы другие могли найти ваше видео!</span><br><br>
+          Лучше использовать релевантные ключевые слова, чтобы другие пользователи могли найти ваше видео!</span><br><br>
         </td>
       </tr>
       <tr>
@@ -388,24 +408,22 @@ showHeader("Загрузка видео");
   </table>
   </form>
 <?php elseif ($p === 2): ?>
-  <div class="upload-step-title">Загрузка видео (Шаг 2 из 2)</div>
+  <div class="tableSubTitle">Загрузка видео (Шаг 2 из 2)</div>
   <?php if ($error): ?><div class="errorBox"><?=$error?></div><?php endif; ?>
   <?php if ($success): ?><div class="confirmBox"><?=$success?></div><?php endif; ?>
   <form method="post" enctype="multipart/form-data" action="upload.php?p=2" onsubmit="var b=document.getElementById('uploadBtn'); if(b){b.disabled=true; b.value='Загрузка...';}">
     <input type="hidden" name="title" value="<?=htmlspecialchars($title)?>">
     <input type="hidden" name="description" value="<?=htmlspecialchars($description)?>">
     <input type="hidden" name="MAX_FILE_SIZE" value="1048576000">
-    <table class="upload-step-table" width="600">
+    <table class="upload-step-table" width="100%">
       <tr>
-        <td class="upload-label" width="120"><b>Файл:</b></td>
+        <td class="upload-label" width="200"><b>Файл:</b></td>
         <td class="upload-input">
-          <div class="upload-bluebox">
-            <input type="file" name="video" accept="video/*,audio/*" style="font-size: 13px;"><br>
-			<br>
-            <b>Максимальный размер файла: 1000 МБ, максимальная длина: неограничена.</b><br>
-			<br>
-            Не загружайте материалы, нарушающие авторские права, непристойные видео и т. д. Загружая видео, вы подтверждаете, что обладаете всеми необходимыми правами на этот контент.<br>
-          </div>
+        <div width="595" height="20" cellpadding="0" border="0" bgcolor="#E5ECF9" class="formHighlight">
+			<input type="file" style="margin-bottom: 3px" id="fileToUpload" name="video" accept="video/*,audio/*"><br>
+			<span class="formHighlightText"><b>Макс. размер файла: 1000 МБ. Не загружайте материалы, нарущающие авторские права.</b></span><br>
+			<span class="formHighlightText">После загрузки, вы можете редактировать или удалить это видео в любое время в разделе "Мои видео".</span>
+		</div>
         </td>
       </tr>
       <tr>
@@ -417,15 +435,18 @@ showHeader("Загрузка видео");
       </tr>
       <tr>
         <td></td>
-        <td class="upload-btn"><input type="submit" value="Загрузить видео" id="uploadBtn"></td>
+        <td>
+        <br>
+        <b>ПОЖАЛУЙСТА, ПОДОЖДИТЕ, ЭТО МОЖЕТ ЗАНЯТЬ НЕСКОЛЬКО МИНУТ.<br>
+        ДАЖЕ ЕСЛИ СТРАНИЦА ОБНОВИЛАСЬ БЕЗ ПОДТВЕРЖДЕНИЯ, ВАШЕ<br> ВИДЕО БУДЕТ ОТПРАВЛЕНО НА ОБРАБОТКУ.</b></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td class="upload-btn"><br><input type="submit" value="Загрузить видео" id="uploadBtn"></td>
       </tr>
     </table>
   </form>
-  
-	<br>
-    <center><b>ПОЖАЛУЙСТА, ПОДОЖДИТЕ, ЭТО МОЖЕТ ЗАНЯТЬ НЕСКОЛЬКО МИНУТ.<br>
-    ПОСЛЕ ЗАВЕРШЕНИЯ ВЫ УВИДИТЕ ПОДТВЕРЖДЕНИЕ.</b></center>
-
+	
 <?php endif; ?>
 </tr>
 </table>
