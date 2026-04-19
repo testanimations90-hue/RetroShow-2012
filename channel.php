@@ -49,7 +49,7 @@ function channel_get_rating_stats($db, $video_id) {
     $avg = $row['avg_rating'] !== null ? round((float)$row['avg_rating'], 1) : 0.0;
     return [$count, $avg];
 }
-function channel_render_avg_stars_html($avg, $count) {
+function channel_render_avg_stars_html($avg, $count, $show_count_rating = true) {
     $remaining = floatval($avg);
     $parts = [];
     for ($i=0; $i<5; $i++) {
@@ -68,7 +68,9 @@ function channel_render_avg_stars_html($avg, $count) {
         <img src="img/star_smn<?=($parts[3]==='full'?'':($parts[3]==='half'?'_half':'_bg'))?>.gif" style="border:0; padding:0px; margin:0px; vertical-align:middle;">
         <img src="img/star_smn<?=($parts[4]==='full'?'':($parts[4]==='half'?'_half':'_bg'))?>.gif" style="border:0; padding:0px; margin:0px; vertical-align:middle;">
       </nobr>
-      <span style="color:#666666; font-size:smaller;">(<?=intval($count)?> оценок)</span>
+      <?php if ($show_count_rating): ?>
+        <span style="color:#666666; font-size:smaller;">(<?=intval($count)?> оценок)</span>
+      <?php endif; ?>
     </div>
     <?php
     return ob_get_clean();
@@ -1477,20 +1479,22 @@ foreach ($filters as $filter_key => $filter_label) {
 					$title_display = mb_strlen($video['title']) > 20 ? mb_substr($video['title'], 0, 22) . '...' : $video['title'];
 				?>
 					<td width="20%" style="padding: 2px; vertical-align: top;">
-						<div style="padding: 4px;">
+						<div style="padding-left: 4px; padding-right: 4px; padding-bottom: 0px;">
 							<div class="moduleFeaturedThumb" style="float: left; margin: 0px;">
 								<a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $video['id'])?>"><img src="<?=htmlspecialchars($video['preview'])?>" width="120" height="90" border="0" style="display: block;"></a>
 							</div>
-							<div class="title" style="text-align:left; padding-top: 6px; clear: left;">
-								<b><a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $video['id'])?>" style="color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($title_display)?></a></b><br>
-								<span class="runtime"><?=get_video_duration($video['file'], $video['id'], $video['public_id'] ?? '')?></span>
+							<div class="moduleFeaturedTitle" style="text-align:center; padding-top: 6px; clear: left;">
+								<a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $video['id'])?>" style="color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($title_display)?></a>
 							</div>
-							<div style="font-size:11px; text-align:left;">
-								<span style="color:#888;">Добавлено:</span> <?=time_ago(strtotime($video['time']))?><br>
-								<span style="color:#888;">Автор:</span> <a href="channel.php?user=<?=urlencode($video['user'])?>" style="color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($video['user'])?></a><br>
-								<span style="color:#888;">Просмотров:</span> <?=intval($video['views'])?><br>
-								<?= channel_render_avg_stars_html($ra, $rc) ?>
-							</div>
+							<div class="moduleFeaturedDetails" style="text-align:center; clear: left;">
+								Добавлено: <?=time_ago(strtotime($video['time']))?><br>
+								от <a href="channel.php?user=<?=urlencode($video['user'])?>" style="color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($video['user'])?></a><br>
+								Просмотров: <?=intval($video['views'])?> | Комм. <?=intval($video['comments'])?>
+                </div>
+                <?php if ($ra > 0): ?>
+                  <center><?= channel_render_avg_stars_html($ra, $rc, false) ?></center>
+                <?php endif; ?>
+							
 						</div>
 					</td>
 				<?php
