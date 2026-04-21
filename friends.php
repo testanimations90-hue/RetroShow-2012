@@ -83,6 +83,7 @@ try {
 } catch (Exception $e) {}
 $fav_count = 0;
 $fr_count = 0;
+$private_count = 0;
 try {
     $stmtFav = $db->prepare("SELECT COUNT(*) FROM user_favourites WHERE user = ?");
     $stmtFav->execute([$view_user]);
@@ -93,13 +94,11 @@ try {
     $stmtFr2->execute([$view_user]);
     $fr_count = (int)$stmtFr2->fetchColumn();
 } catch (Exception $e) {}
-echo '<div style="padding:8px 0 12px 0; text-align:center; font-size:13px;">';
-echo '<a href="channel.php?user='.urlencode($view_user).'">Профиль</a> | ';
-echo '<a href="channel.php?user='.urlencode($view_user).'&tab=videos">Видео ('.$total_videos.')</a> | ';
-echo '<a href="favourites.php?user='.urlencode($view_user).'">Избранное ('.$fav_count.')</a> | ';
-echo '<b>Друзья ('.$fr_count.')</b> | ';
-echo '<a href="channel.php?user='.urlencode($view_user).'&tab=comments">Комментарии ('.$comments_count.')</a>';
-echo '</div>';
+try {
+    $stmtPriv = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 1");
+    $stmtPriv->execute([$view_user]);
+    $private_count = (int)$stmtPriv->fetchColumn();
+} catch (Exception $e) {}
 ?>
 <style>
 .channelPagingDiv { background: #CCC; margin: 0; padding: 5px 0; font-size: 13px; color: #333; font-weight: bold; text-align: right; }
@@ -159,31 +158,43 @@ if (!$view_user) {
             $fr_count = (int)$stmtFr3->fetchColumn();
         } catch (Exception $e) { $fr_count = 0; }
         echo '<div class="moduleEntry">';
-        echo '<table width="565" cellpadding="0" cellspacing="0" border="0">';
+        echo '<table width="100%" cellpadding="0" cellspacing="0" border="0">';
         echo '<tr valign="top">';
 
-        echo '<td align="center" width="150">';
         if ($is_own) {
+            echo '<td align="center" width="150">';
             echo '<form method="post" action="friends.php?user='.urlencode($view_user).'" style="margin:0;">';
             echo '<input type="hidden" name="remove_friend" value="1">';
             echo '<input type="hidden" name="friend" value="'.htmlspecialchars($friend, ENT_QUOTES, 'UTF-8').'">';
             echo '<input type="submit" value="Удалить из друзей" style="margin-top:5px;">';
             echo '</form>';
+            echo '</td>';
         } else {
-            echo '&nbsp;';
+            echo '<td width="130" align="center">';
+            if ((int)$videos_count > 0) {
+                $friend_thumb = get_profile_icon($friend, '0');
+                echo '<a href="channel.php?user='.urlencode($friend).'">';
+                echo '<img src="'.htmlspecialchars($friend_thumb, ENT_QUOTES, 'UTF-8').'" class="moduleEntryThumb" width="120" height="90" border="0" alt="">';
+                echo '</a>';
+            }
+            echo '</td>';
         }
-        echo '</td>';
 
         echo '<td width="100%">';
-        echo '<div class="moduleEntryTitle" style="margin-bottom:5px;">';
-        echo '<a href="channel.php?user='.urlencode($friend).'">'.htmlspecialchars($friend, ENT_QUOTES, 'UTF-8').'</a> ';
-        echo '<span style="color:#777;font-size:11px;">(Друзья)</span>';
+        echo '<div class="moduleEntryTitle">';
+        echo '<a href="channel.php?user='.urlencode($friend).'">'.htmlspecialchars($friend, ENT_QUOTES, 'UTF-8').'</a>';
         echo '</div>';
 
         echo '<div class="moduleEntryDescription">';
-        echo '<a href="channel.php?user='.urlencode($friend).'&tab=videos">Видео</a> ('.$videos_count.') | ';
-        echo '<a href="favourites.php?user='.urlencode($friend).'">Избранное</a> ('.$favs_count.') | ';
-        echo '<a href="friends.php?user='.urlencode($friend).'">Друзья</a> ('.$fr_count.')';
+        if ($is_own) {
+            echo '<a href="channel.php?user='.urlencode($friend).'&tab=videos">Видео</a> ('.$videos_count.') | ';
+            echo '<a href="favourites.php?user='.urlencode($friend).'">Избранное</a> ('.$favs_count.') | ';
+            echo '<a href="friends.php?user='.urlencode($friend).'">Друзья</a> ('.$fr_count.')';
+        } else {
+            echo '<a href="channel.php?user='.urlencode($friend).'&tab=videos&view=public">Видео</a> ('.$videos_count.') | ';
+            echo '<a href="favourites.php?user='.urlencode($friend).'">Избранное</a> ('.$favs_count.') | ';
+            echo '<a href="friends.php?user='.urlencode($friend).'">Друзья</a> ('.$fr_count.')';
+        }
         echo '</div>';
         echo '</td>';
 
@@ -232,27 +243,12 @@ if (!$view_user) {
     </table>
   </td>
   <td width="180">
-    <?php if ($is_own) { ?>
-    <table width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFEEBB">
-      <tr>
-        <td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-        <td><img src="img/pixel.gif" width="1" height="5"></td>
-        <td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-      </tr>
-      <tr>
-        <td><img src="img/pixel.gif" width="5" height="1"></td>
-        <td width="170">
-          <div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="help.php">Поделитесь видео с друзьями!</a></div>
-        </td>
-        <td><img src="img/pixel.gif" width="5" height="1"></td>
-      </tr>
-      <tr>
-        <td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-        <td><img src="img/pixel.gif" width="1" height="5"></td>
-        <td><img src="img/box_login_br.gif" width="5" height="5"></td>
-      </tr>
-    </table>
-    <?php } ?>
+    <?= channel_sidebar_nav_html($view_user, 'friends', [
+        'public' => (int)$total_videos,
+        'private' => $is_own ? (int)$private_count : 0,
+        'fav' => (int)$fav_count,
+        'friends' => (int)$fr_count,
+    ]) ?>
   </td>
 </tr>
 </table>

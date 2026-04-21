@@ -32,6 +32,30 @@ function rus_date($time) {
     return "$d $m $y";
 }
 
+function channel_video_rus_date_from_db($timeVal): string {
+    if ($timeVal === null || $timeVal === '') {
+        return rus_date(time());
+    }
+    if (is_numeric($timeVal)) {
+        $ts = (int)$timeVal;
+        if ($ts > 100000) {
+            return rus_date($ts);
+        }
+    }
+    $s = trim((string)$timeVal);
+    foreach (['d.m.Y, H:i', 'd.m.Y H:i'] as $fmt) {
+        $dt = DateTime::createFromFormat($fmt, $s);
+        if ($dt instanceof DateTime) {
+            return rus_date((int)$dt->format('U'));
+        }
+    }
+    $ts = strtotime(str_replace(',', '', $s));
+    if ($ts !== false && $ts > 86400) {
+        return rus_date($ts);
+    }
+    return rus_date(time());
+}
+
 function channel_comment_body_html($text) {
     return nl2br(htmlspecialchars((string)$text, ENT_QUOTES, 'UTF-8'), false);
 }
@@ -198,6 +222,28 @@ $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $per_page = 5;
 $offset = ($page - 1) * $per_page;
 if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
+    $is_owner_profile = isset($_SESSION['user']) && $_SESSION['user'] === $user;
+    $are_friends = false;
+
+    if (!$is_owner_profile && isset($_SESSION['user']) && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_friend'])) {
+        try {
+            $db->prepare("INSERT OR IGNORE INTO user_friends (user, friend, created_at) VALUES (?, ?, ?)")
+                ->execute([$_SESSION['user'], $user, time()]);
+        } catch (Exception $e) {
+        }
+        header('Location: channel.php?user=' . urlencode($user));
+        exit;
+    }
+    if (!$is_owner_profile && isset($_SESSION['user'])) {
+        try {
+            $stAreFriends = $db->prepare("SELECT 1 FROM user_friends WHERE user = ? AND friend = ? LIMIT 1");
+            $stAreFriends->execute([$_SESSION['user'], $user]);
+            $are_friends = (bool)$stAreFriends->fetchColumn();
+        } catch (Exception $e) {
+            $are_friends = false;
+        }
+    }
+
     $stmt = $db->prepare('SELECT last_login, signup_time FROM users WHERE login = ?');
     $stmt->execute([$user]);
     $user_row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -205,557 +251,267 @@ if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
     $signup_time = isset($user_row['signup_time']) ? intval($user_row['signup_time']) : time();
 
     $db->exec("CREATE TABLE IF NOT EXISTS user_stats (user TEXT PRIMARY KEY, profile_viewed INTEGER DEFAULT 0, videos_watched INTEGER DEFAULT 0)");
-	
     if (isset($_SESSION['user']) && $_SESSION['user'] !== $user) {
         $db->exec("INSERT OR IGNORE INTO user_stats (user) VALUES (".$db->quote($user).")");
         $db->exec("UPDATE user_stats SET profile_viewed = profile_viewed + 1 WHERE user = " . $db->quote($user));
     }
-	
+
     $stat = $db->query("SELECT profile_viewed FROM user_stats WHERE user = " . $db->quote($user));
     $profile_viewed = ($stat && ($row = $stat->fetch())) ? intval($row['profile_viewed']) : 0;
-	
+
     $stmt_vw = $db->prepare("SELECT COUNT(DISTINCT video_id) FROM video_views WHERE user = ?");
     $stmt_vw->execute([$user]);
-    $videos_watched = $stmt_vw->fetchColumn();
+    $videos_watched = (int)$stmt_vw->fetchColumn();
 
-    $profile = [
-        'username' => htmlspecialchars($user),
-        'url' => 'http://' . $_SERVER['HTTP_HOST'] . '/channel.php?user='.urlencode($user),
-        'videos_watched' => $videos_watched,
-        'profile_viewed' => $profile_viewed,
-    ];
-    $profile['last_login_time'] = $last_login_time;
-    $profile['signup_time'] = $signup_time;
-    function ago_ru($ts) {
-        $diff = time() - $ts;
-        if ($diff < 60) return $diff.' секунд назад';
-        if ($diff < 3600) return floor($diff/60).' минут назад';
-        if ($diff < 86400) return floor($diff/3600).' часов назад';
-        if ($diff < 2592000) return floor($diff/86400).' дней назад';
-        if ($diff < 31536000) return floor($diff/2592000).' месяцев назад';
-        return floor($diff/31536000).' лет назад';
+    if (!function_exists('ago_ru')) {
+        function ago_ru($ts) {
+            $diff = time() - (int)$ts;
+            if ($diff < 60) return $diff.' секунд назад';
+            if ($diff < 3600) return floor($diff / 60).' минут назад';
+            if ($diff < 86400) return floor($diff / 3600).' часов назад';
+            if ($diff < 2592000) return floor($diff / 86400).' дней назад';
+            if ($diff < 31536000) return floor($diff / 2592000).' месяцев назад';
+            return floor($diff / 31536000).' лет назад';
+        }
     }
-    $profile['last_login'] = $profile['last_login_time'] ? ago_ru($profile['last_login_time']) : '–';
-    $profile['member_since'] = $profile['signup_time'] ? ago_ru($profile['signup_time']) : '–';
-    showHeader('Профиль ' . $profile['username']);
-?>
 
-<style type="text/css">
-.profileBoxHead { background:#888; color:#fff; font-weight:bold; font-size:14px; padding:4px 8px; }
-.profileBox { border:1px solid #bbb; margin-bottom:10px; }
-.profileBoxContent { background:#fff; padding:8px; font-size:13px; }
-.profileLabel { color:#888; font-size:11px; text-align:left; }
-.profileValue { font-size:13px; }
-.profileLink { color:#0033cc; text-decoration:underline; }
-.profileBulletinTable { border-collapse:collapse; width:100%; }
-.profileBulletinTable td, .profileBulletinTable th { border:1px solid #bbb; padding:4px; font-size:12px; }
-.profileTitles { word-wrap: anywhere;
-	font-family:  Arial, Helvetica, sans-serif;
-	font-size: 12px;
-	font-weight: bold;
-	color: #999999;
-	padding-top: 4px;
-	padding-bottom: 4px;
-	}
-</style>
-<?php
+    $public_count = 0;
+    $private_count = 0;
+    $friends_count = 0;
+    try {
+        $stPub = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0");
+        $stPub->execute([$user]);
+        $public_count = (int)$stPub->fetchColumn();
+        if ($is_owner_profile) {
+            $stPriv = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 1");
+            $stPriv->execute([$user]);
+            $private_count = (int)$stPriv->fetchColumn();
+        }
+        $stFr = $db->prepare("SELECT COUNT(*) FROM user_friends WHERE user = ?");
+        $stFr->execute([$user]);
+        $friends_count = (int)$stFr->fetchColumn();
+    } catch (Exception $e) {
+    }
 
-if (!isset($total)) {
-    $stmt_total = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0");
-    $stmt_total->execute([$user]);
-    $total = $stmt_total->fetchColumn();
-}
-echo '<div style="padding:8px 0 12px 0; text-align:center; font-size:13px;">';
-echo (!isset($_GET['tab']) || $_GET['tab'] == '') 
-    ? '<b>Профиль</b>' : '<a href="channel.php?user='.urlencode($user).'">Профиль</a>';
-echo ' | ';
-echo (isset($_GET['tab']) && $_GET['tab'] === 'videos')
-    ? '<b>Видео ('.$total.')</b>' : '<a href="channel.php?user='.urlencode($user).'&tab=videos">Видео ('.$total.')</a>';
-echo ' | ';
-echo '<a href="favourites.php?user='.urlencode($user).'">Избранное ('.$fav_count.')</a> | ';
-$fr_count = 0;
-try {
-    $stmtFr = $db->prepare("SELECT COUNT(*) FROM user_friends WHERE user = ?");
-    $stmtFr->execute([$user]);
-    $fr_count = (int)$stmtFr->fetchColumn();
-} catch (Exception $e) {}
-echo '<a href="friends.php?user='.urlencode($user).'">Друзья ('.$fr_count.')</a> | ';
-echo '<a href="channel.php?user='.urlencode($user).'&tab=comments">Комментарии ('.$comments_count.')</a>';
-echo '</div>';
-?>
+    $latest_public = null;
+    try {
+        $stLatest = $db->prepare("SELECT id, public_id, title, preview, time, views FROM videos WHERE user = ? AND private = 0 ORDER BY id DESC LIMIT 1");
+        $stLatest->execute([$user]);
+        $latest_public = $stLatest->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Exception $e) {
+        $latest_public = null;
+    }
 
-
-<style>
-.profileBox {
-  border:1px solid #999999;
-  margin-bottom:10px;
-  zoom:1;
-  overflow:visible;
-}
-
-.profileBoxHead {
-  display:block;
-  width:100%;
-  padding:3px;
-  font-size:12px;
-  background:#888;
-  color:#000;
-  margin:0;
-  zoom:1;
-  box-sizing:border-box;
-}
-
-.profileBoxContent{
-  padding:6px;
-  width:auto;
-  max-width:100%;
-  box-sizing:border-box;
-  overflow:visible;
-  zoom:1;
-}
-
-.profileBoxContent table {
-  width:100%;
-  table-layout:fixed;
-  border-collapse:collapse;
-}
-
-.profileBoxContent td,
-.profileBoxContent a,
-.profileBoxContent .profileLink {
-  word-wrap:break-word;
-  white-space:normal;
-}
-</style>
-
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-<tr valign="top">
-  <td width="320">
-    <div class="profileBox">
-      <div class="profileBoxHead" style="background:#999999; color:#fff; padding-bottom: 2px; padding-left: 5px; font-size:12px;">Привет. Я <?= $profile['username'] ?></div>
-      <div class="profileBoxContent">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr valign="top">
-            <td width="140">
-              <img src="<?= get_profile_icon($user, $user_data['profile_icon'] ?? '0') ?>" width="140" height="108" style="border:1px solid #bbb; background:#eee;">
-            </td>
-            <td style="padding-left: 10px;">
-              <?php if ($user_data): ?>
-                <?php if ($user_data['birthday_yr'] && $user_data['birthday_yr'] !== '---'): ?>
-                  <?php 
-                    $birth_year = intval($user_data['birthday_yr']);
-                    $current_year = date('Y');
-                    $age = $current_year - $birth_year;
-                  ?>
-                  <span class="profileTitles">Возраст: </span><?= $age ?><br>
-                <?php endif; ?>
-                
-                <?php if ($user_data['gender']): ?>
-                  <span class="profileTitles">Пол: </span>
-                  <?= ($user_data['gender'] === 'm') ? 'Мужской' : (($user_data['gender'] === 'f') ? 'Женский' : '') ?><br>
-                <?php endif; ?>
-                
-                <?php if ($user_data['country']): ?>
-                  <?= htmlspecialchars($user_data['country']) ?><br>
-                <?php endif; ?>
-              <?php endif; ?>
-            </td>
-          </tr>
-        </table>
-        
-        <br>
-        <span class="profileTitles">Последний вход:</span> <?= $profile['last_login'] ?><br>
-        <span class="profileTitles">Зарегистрирован:</span> <?= $profile['member_since'] ?><br>
-        <span class="profileTitles">URL:</span> <a href="<?= $profile['url'] ?>" class="profileLink"><?= $profile['url'] ?></a>
-        <br>
-        <br>
-        <form action="outbox.php" method="get">
-          <input type="hidden" name="user" value="<?=htmlspecialchars($user)?>">
-          <input type="submit" value="Напишите мне!">
-        </form>
-      </div>
-    </div>
-  </td>
-  <td style="padding-left:10px; width: 462px;" valign="top">
-    <div class="profileBox">
-      <div class="profileBoxHead" style="background:#999999; color:#fff; padding-bottom: 2px; padding-left: 5px; font-size:12px;">Подробнее обо мне</div>
-      <div class="profileBoxContent">
-        <div style="font-size:12px; line-height:1.35;">
-          <?php if ($about_me): ?>
-  <div style="margin:0 0 6px 0; background:#fff;">
-    <div style="font-size:13px; color:#222; white-space:pre-line; margin:0; padding:0;"><?=htmlspecialchars($about_me)?></div>
-    <div style="border-top:1px dashed #888; height:0; line-height:0; font-size:0; margin:4px 0 6px 0;"></div>
-  </div>
-<?php endif; ?>
-          <?php if ($user_data && ($user_data['name'] || $user_data['last_n'])): ?>
-            <span class="profileTitles">Имя:</span> <?= htmlspecialchars(trim($user_data['name'] . ' ' . $user_data['last_n'])) ?><br>
-          <?php endif; ?>
-          <span class="profileTitles">Подписчики:</span> <?= $subscribers_count ?><br>
-          <span class="profileTitles">Видео просмотрено:</span> <?= $profile['videos_watched'] ?><br>
-          <span class="profileTitles">Профиль просмотрен:</span> <?= $profile['profile_viewed'] ?> раз<br>
-          <span class="profileTitles">Последний вход:</span> <?= $profile['last_login'] ?><br>
-          <span class="profileTitles">Зарегистрирован:</span> <?= $profile['member_since'] ?><br>
-          <?php if ($user_data && $user_data['website']): ?>
-            <?php 
-            $website_url = $user_data['website'];
-            if (!preg_match('/^https?:\/\//', $website_url)) {
-                $website_url = 'http://' . $website_url;
+    $age_text = '';
+    $birth_year = isset($user_data['birthday_yr']) ? trim((string)$user_data['birthday_yr']) : '';
+    if ($birth_year !== '' && $birth_year !== '---') {
+        $age_val = (int)date('Y') - (int)$birth_year;
+        if ($age_val > 0 && $age_val < 120) {
+            $n10 = $age_val % 10;
+            $n100 = $age_val % 100;
+            if ($n10 === 1 && $n100 !== 11) {
+                $age_word = 'год';
+            } elseif ($n10 >= 2 && $n10 <= 4 && ($n100 < 10 || $n100 >= 20)) {
+                $age_word = 'года';
+            } else {
+                $age_word = 'лет';
             }
-            ?>
-            <span class="profileTitles">Сайт:</span>&nbsp;<a href="<?= htmlspecialchars($website_url) ?>" class="profileLink" target="_blank"><?= htmlspecialchars($user_data['website']) ?></a><br>
-          <?php endif; ?>
-          <?php if ($user_data && $user_data['hometown']): ?>
-            <span class="profileTitles">Родной город:</span> <?= htmlspecialchars($user_data['hometown']) ?><br>
-          <?php endif; ?>
-          <?php if ($user_data && $user_data['city']): ?>
-            <span class="profileTitles">Текущий город:</span> <?= htmlspecialchars($user_data['city']) ?><br>
-          <?php endif; ?>
-        </div>
-      </div>
-    </div>
-
-<style type="text/css">
-.userTable {
-	border: 1px solid #999999;
-	background-color: #F4F4F4;
-    color: ;
-	width: 300px;
-	}
-    	.aboutTable {
-	border: 1px solid #999999;
-	background-color: #ffffff;
-    color: #00000;
-	width: 300px;
-	}
-    	.normal-box {
-	background-color: #ffffff;
-    color: #00000;
-	}
-	
-	.spaceMaker {
-	padding-top: 2px;
-	}
-		
-	tr.rows td{
-	padding-top: 6px;
-	padding-bottom: 6px;
-	padding-left: 15px;
-	}
-	
-	tr.connectRows td{
-	padding-top: 3px;
-	}
-	
-	tr.broadcastRow td {
-	padding-top: 6px;
-	padding-bottom: 6px;
-	}
-	
-	tr.connectRowsTop td {
-	padding-top: 8px;
-	}
-	
-	tr.connectRowsBottom td {
-	padding-top: 3px;
-	padding-bottom: 8px;
-	}
-
-	tr.rowsLine td{
-	padding-top: 6px;
-	padding-bottom: 6px;
-	padding-left: 15px;
-	border-bottom: 1px solid #666666;
-	}
-	
-	tr.rowsLineBottom td{
-	padding-top: 6px;
-	padding-bottom: 6px;
-	padding-left: 15px;
-	}
-	
-	.profileTitles {
-	font-family:  Arial, Helvetica, sans-serif;
-	font-size: 12px;
-	font-weight: bold;
-	color: gray;
-	padding-top: 4px;
-	padding-bottom: 4px;
-	}
-	
-	.profileHeaders {
-	background-color: #999999;
-	font-family: Arial, Helvetica, sans-serif;
-	font-size: 13px;
-	font-weight: bold;
-	color: white;
-	padding-bottom: 3px;
-	padding-top: 3px;
-	}
-	
-	.aboutTable {
-	width: 560px;
-	border: 1px solid #999999;
-	}
-	
-	.aboutImg {
-	width: 140px;
-	height: 108px;
-	border: 2px solid #999999;
-	}
-	
-	.commentPostTable {
-	border: 1px solid #666666;
-	}
-	
-	
-	.videoPostTable {
-	width: 560px;
-	border: 1px solid #999999;
-	padding-left: 15px;
-	}
-	
-	.videoPostImg {
-	width: 154px;
-	height: 124px;
-	border: 1px solid #999999;
-	}
-	
-	
-	.connectTable {
-	border: 1px solid #999999;	
-	width: 300px;
-	}
-	
-	.topSpace {
-	padding-top: 3px;
-	}	
-	
-	.connectImages {
-	padding-left: 3px;
-	}
-	
-	.connectImages2 {
-	padding-left: 2px;
-	}
-
-	
-	.connectLinks {
-	font-family: Arial, Helvetica, sans-serif;
-	font-size: 11px;
-	font-weight: normal;
-	}
-	
-	.bulletinTable {
-	width: 300px;
-	border: 1px solid #999999;
-	}
-	
-	tr.bulletin td {
-	background-color: #F4F4F4;
-	border-right: 1px solid #FFFFFF;
-	padding-top: 3px;
-	padding-bottom: 3px;
-	padding-left: 3px;
-	padding-right: 3px;
-	border-bottom: 1px solid #FFFFFF;
-	}
-	
-	tr.bulletinTitle td {
-	padding-top: 3px;
-	padding-bottom: 3px;
-	border-bottom: 1px solid #999999;
-	}
-	.bulletinPost
-    {
-        color: ;
+            $age_text = $age_val . ' ' . $age_word;
+        }
     }
-	tr.bulletinPost td {
-	padding-top: 5px;
-	padding-bottom: 5px;
-	border-top: 1px solid #999999;
-	}
-	
-	tr.commentsMsg td {
-	padding-top: 5px;
-	padding-bottom: 5px;
-	border-top: 1px solid #666666;
-	background-color: #F4F4F4;
-	}
-	
-	td.buttonPost {
-	padding-top: 4px;
-	padding-bottom: 4px;
-	border-top: 1px solid #999999;
-	}
-	
-	td.bulletinTopFirstCells {
-	border-right: 1px solid #999999;
-	border-bottom: none;
-	}
-	
-	td.checkBoxSection {
-	background-color: #F4F4F4;
-	width: 15px;
-	border-right: 1px solid #999999;
-	}
-		
-	
-	.bulletinSmallImg {
-	padding-left: 5px;
-	}
-	
-	.commentsImg {
-	width: 60px;
-	border: 2px solid #666666;
-	}
-	
-	tr.comments td{
-	border-bottom: 1px solid #666666;
-	padding-top: 3px;
-	padding-bottom: 5px;
-	}
-	
-	
-	.bulletinReadTable {
-	width: 560px;
-	border: 1px solid #999999;
-	}
-	
-	td.bulletinRead {
-	background-color: #F4F4F4;
-	border-right: 1px solid #999999;
-	border-bottom: 1px solid #999999;
-	}
-	
-	td.bulletinReadBottom {
-	background-color: #F4F4F4;
-	border-right: 1px solid #999999;
-	}
-	
-	
-	td.bulletinReadLast {
-	background-color: #F4F4F4;
-	border-bottom: 1px solid #999999;
-	}
-	
-	
-	tr.emptyBulletin td{
-	background-color: #F4F4F4;
-	padding-top: 3px;
-	padding-bottom: 5px;
-	}
-	
-	
-	td.leftBg {
-	background-color: #F4F4F4;
-	border-right: 1px solid #666666;
-	}
-	
 
-	a.edit:link {color: white; text-decoration: underline; }
-	a.edit:visited {color: white; text-decoration: underline; }
-	a.edit:hover {color: white; text-decoration: underline; }
-	a.edit:active {color: white; text-decoration: underline; } 
+    $name_text = trim((string)($user_data['name'] ?? '') . ' ' . (string)($user_data['last_n'] ?? ''));
+    $about_text = trim((string)($user_data['about_me'] ?? ''));
 
+    $website_raw = trim((string)($user_data['website'] ?? ''));
+    $website_href = $website_raw;
+    if ($website_href !== '' && !preg_match('/^https?:\/\//i', $website_href)) {
+        $website_href = 'http://' . $website_href;
+    }
 
-	
-	td.bulletinReadRight {
-	border-bottom: 1px solid #999999;
-	}
-	
-	
-	td.bulletinReadRightBottom {
-	border-bottom: none;
-	}
-	
-	td.bulletinReadBottom {
-	background-color: F4F4F4;
-	border-right: 1px solid #999999;
-	border-bottom: none;
-	}
-	
-	tr.bulletinCols td {
-	border-bottom: 1px solid #999999;
-	padding-top: 3px;
-	padding-bottom: 5px;
-	}
-	
-	td.bulletinData {
-	border-right: 1px solid #999999;
-	padding-bottom: 5px;
-	padding-right: 3px;
-	padding-left: 3px;
-	}
-.videobarthumbnail_block
-{
-	float: left;
-	width: 115px;
-	padding: 5px;
-}
-img.videobarthumbnail_gray
-{
-	border: 2px solid #999999;
- margin-bottom:5px;
-    
-}
-</style>
-
-<table class="commentPostTable" width="100%" border="1" bordercolor="#666666" cellpadding="0" cellspacing="0" style="border:1px solid #666666;border-collapse:collapse;max-width:550px;">
-    <tbody>
-    <tr class="profileHeaders" style="background-color:#999999">
-    <td colspan="3" style="border-right:1px solid #666666; padding:0; height:20px;">
-      <div style="height:100%; line-height:20px; padding-left:5px; padding-botom: 3px; font-size:12px; color:#fff;">
-        Мои комментарии
-      </div>
-    </td>
-    </tr>
-    <?php
-    $pc_disabled = $user_data && (string)($user_data['profile_comm'] ?? '0') === '2';
-    if ($pc_disabled): ?>
-    <tr class="rowsLineBottom">
-      <td colspan="3" style="padding:10px; text-align:center; background:#F4F4F4; border-bottom:none; border-right:1px solid #666666;">Этот пользователь отключил возможность комментирования своего профиля.</td>
-    </tr>
-    <?php elseif (empty($profile_comments_preview)): ?>
-
-    <?php else:
-      foreach ($profile_comments_preview as $pc):
-        $c_author = (string)($pc['user'] ?? '');
-        $pi_c = get_user_profile_icon_setting($c_author);
-        $avatar_c = htmlspecialchars(get_profile_icon($c_author, $pi_c), ENT_QUOTES, 'UTF-8');
-        $cts = isset($pc['time']) ? (int)$pc['time'] : 0;
+    showHeader('Профиль ' . htmlspecialchars($user));
     ?>
-    <tr class="rowsLine">
-      <td class="leftBg" style="padding:6px 6px 6px 10px; width:118px; max-width:118px;" valign="top" align="center">
-        <span class="profileTitles"><a href="channel.php?user=<?=urlencode($c_author)?>"><?=htmlspecialchars($c_author)?></a></span>
-        <br><br>
-        <a href="channel.php?user=<?=urlencode($c_author)?>"><img src="<?=$avatar_c?>" alt="" class="commentsImg" width="50" height="38" style="width:50px;height:38px;"></a>
-      </td>
-      <td colspan="2" style="padding:6px 8px 6px 4px; border-right:1px solid #666666;" valign="top">
-        <span class="profileTitles"><?= $cts > 0 ? htmlspecialchars(rus_date($cts), ENT_QUOTES, 'UTF-8') : '—' ?></span><br><br>
-        <div style="font-size:13px;color:#222;word-break:break-all;max-width:400px;"><?=channel_comment_body_html($pc['text'] ?? '')?></div>
-      </td>
-    </tr>
-    <?php endforeach; endif; ?>
-    <?php if (!$pc_disabled): ?>
-    <tr class="commentsMsg">
-      <td colspan="3" align="center" style="border-right:1px solid #666666;">
-        <span class="bulletinPost" style="padding-left: 5px; padding-right: 5px;">
-          <a href="channel.php?user=<?=urlencode($user)?>&tab=comments&amp;action=new" style="color:#0033cc; text-decoration:underline;">Оставить комментарий</a> для <?=htmlspecialchars($user)?>.
-          <span style="color:#666; font-size:12px;">Публикуемые вами комментарии будут видны всем, кто просматривает профиль пользователя <?=htmlspecialchars($user)?>.</span>
-        </span>
-      </td>
-    </tr>
-    <?php endif; ?>
-  </tbody></table>
-</td>
-</tr>
-</table>
-  <?php
+    <table width="790" align="center" cellpadding="0" cellspacing="0" border="0">
+        <tr valign="top">
+            <td width="180">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#E5ECF9">
+                    <tr>
+                        <td><img src="img/box_login_tl.gif" width="5" height="5" alt=""></td>
+                        <td width="100%"><img src="img/pixel.gif" width="1" height="5" alt=""></td>
+                        <td><img src="img/box_login_tr.gif" width="5" height="5" alt=""></td>
+                    </tr>
+                    <tr>
+                        <td><img src="img/pixel.gif" width="5" height="1" alt=""></td>
+                        <td align="center" style="padding:5px;">
+                            <div style="font-size:14px;font-weight:bold;color:#003366;margin-bottom:5px;">
+                                Вы знаете <?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?>?
+                            </div>
+                            <?php if ($is_owner_profile): ?>
+                                <div style="font-size:12px;color:#666;">
+                                    Это ваш профиль
+                                </div>
+                            <?php elseif (isset($_SESSION['user']) && $are_friends): ?>
+                                <div style="font-size:12px;color:#666;">
+                                    Вы уже друзья.
+                                </div>
+                            <?php elseif (isset($_SESSION['user'])): ?>
+                                <form method="post" action="channel.php?user=<?= urlencode($user) ?>" style="margin:0;">
+                                    <input type="hidden" name="add_friend" value="1">
+                                    <input type="submit" value="Добавить друга">
+                                </form>
+                            <?php endif; ?>
+                            <br><br>
+                            <div style="font-size:14px;font-weight:bold;color:#003366;margin-bottom:5px;">
+                                Хотите связаться?
+                            </div>
+                            <form method="get" action="outbox.php" style="margin:0;">
+                                <input type="hidden" name="user" value="<?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?>">
+                                <input type="submit" value="Пишите мне!">
+                            </form>
+                        </td>
+                        <td><img src="img/pixel.gif" width="5" height="1" alt=""></td>
+                    </tr>
+                    <tr>
+                        <td><img src="img/box_login_bl.gif" width="5" height="5" alt=""></td>
+                        <td><img src="img/pixel.gif" width="1" height="5" alt=""></td>
+                        <td><img src="img/box_login_br.gif" width="5" height="5" alt=""></td>
+                    </tr>
+                </table>
+            </td>
+
+            <td style="padding:0 10px;">
+                <table width="100%" cellpadding="5" cellspacing="0" border="0">
+                    <tbody>
+                    <tr>
+                        <td width="120" align="right"><span class="label">Имя пользователя:</span></td>
+                        <td><?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?></td>
+                    </tr>
+
+                    <?php if ($name_text !== ''): ?>
+                    <tr>
+                        <td align="right"><span class="label">Имя:</span></td>
+                        <td><?= htmlspecialchars($name_text, ENT_QUOTES, 'UTF-8') ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <?php if ($age_text !== ''): ?>
+                    <tr>
+                        <td align="right"><span class="label">Возраст:</span></td>
+                        <td><?= htmlspecialchars($age_text, ENT_QUOTES, 'UTF-8') ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <?php if ($about_text !== ''): ?>
+                    <tr>
+                        <td align="right" valign="top"><span class="label">Обо мне:</span></td>
+                        <td><?= nl2br(htmlspecialchars($about_text, ENT_QUOTES, 'UTF-8')) ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <?php if ($website_raw !== ''): ?>
+                    <tr>
+                        <td align="right"><span class="label">Веб-сайт:</span></td>
+                        <td><a href="<?= htmlspecialchars($website_href, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($website_raw, ENT_QUOTES, 'UTF-8') ?></a></td>
+                    </tr>
+                    <?php endif; ?>
+                    <tr>
+                        <td colspan="2">&nbsp;</td>
+                    </tr>
+
+                    <?php if (!empty($user_data['hometown'])): ?>
+                    <tr>
+                        <td align="right"><span class="label">Родной город:</span></td>
+                        <td><?= htmlspecialchars((string)$user_data['hometown'], ENT_QUOTES, 'UTF-8') ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <?php if (!empty($user_data['city'])): ?>
+                    <tr>
+                        <td align="right"><span class="label">Текущий город:</span></td>
+                        <td><?= htmlspecialchars((string)$user_data['city'], ENT_QUOTES, 'UTF-8') ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <?php if (!empty($user_data['country'])): ?>
+                    <tr>
+                        <td align="right"><span class="label">Текущая страна:</span></td>
+                        <td><?= htmlspecialchars((string)$user_data['country'], ENT_QUOTES, 'UTF-8') ?></td>
+                    </tr>
+                    <?php endif; ?>
+                    <tr>
+                        <td colspan="2">&nbsp;</td>
+                    </tr>
+
+                    <tr>
+                        <td align="right"><span class="label">Последний вход:</span></td>
+                        <td><?= htmlspecialchars(ago_ru($last_login_time), ENT_QUOTES, 'UTF-8') ?></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </td>
+
+            <td width="180">
+                <?= channel_sidebar_nav_html($user, 'profile', [
+                    'public' => $public_count,
+                    'private' => $private_count,
+                    'fav' => $fav_count,
+                    'friends' => $friends_count,
+                ]) ?>
+
+                <?php if ($latest_public): ?>
+                <table width="100%" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#CCCCCC" style="margin-bottom:10px;">
+                    <tr>
+                        <td><img src="img/box_login_tl.gif" width="5" height="5" alt=""></td>
+                        <td width="100%"><img src="img/pixel.gif" width="1" height="5" alt=""></td>
+                        <td><img src="img/box_login_tr.gif" width="5" height="5" alt=""></td>
+                    </tr>
+                    <tr>
+                        <td width="5" style="background-color:#CCCCCC;"><img src="img/pixel.gif" width="5" height="1" alt=""></td>
+                        <td>
+                            <div class="moduleTitleBar">
+                                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                                    <tr><td><div class="moduleTitle">Последнее видео</div></td></tr>
+                                </table>
+                            </div>
+                            <div class="moduleFeatured">
+                                <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                                    <tr>
+                                        <td align="center">
+                                            <a href="video.php?id=<?= urlencode((string)($latest_public['public_id'] ?? $latest_public['id'])) ?>">
+                                                <img src="<?= htmlspecialchars((string)($latest_public['preview'] ?? 'img/no_videos_140.jpg'), ENT_QUOTES, 'UTF-8') ?>" class="moduleFeaturedThumb" width="120" height="90" alt="">
+                                            </a>
+                                            <div class="moduleFeaturedTitle">
+                                                <a href="video.php?id=<?= urlencode((string)($latest_public['public_id'] ?? $latest_public['id'])) ?>"><?= htmlspecialchars((string)($latest_public['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?></a>
+                                            </div>
+                                            <div class="moduleFeaturedDetails">
+                                                Добавлено: <?= htmlspecialchars(channel_video_rus_date_from_db($latest_public['time'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
+                                                от <a href="channel.php?user=<?= urlencode($user) ?>"><?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?></a>
+                                            </div>
+                                            <div class="moduleFeaturedDetails">Просмотров: <?= (int)($latest_public['views'] ?? 0) ?></div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </td>
+                        <td width="5" style="background-color:#CCCCCC;"><img src="img/pixel.gif" width="5" height="1" alt=""></td>
+                    </tr>
+                    <tr>
+                        <td><img src="img/box_login_bl.gif" width="5" height="5" alt=""></td>
+                        <td><img src="img/pixel.gif" width="1" height="5" alt=""></td>
+                        <td><img src="img/box_login_br.gif" width="5" height="5" alt=""></td>
+                    </tr>
+                </table>
+                <?php endif; ?>
+
+                <div style="font-size:12px;color:#444;margin-top:10px;text-align:center;">
+                    <strong>Нравятся мои видео?</strong><br>
+                    <a href="rss.php?user=<?= urlencode($user) ?>">Подпишитесь на RSS.</a>
+                </div>
+            </td>
+        </tr>
+    </table>
+    <?php
     showFooter();
     exit;
 }
 
 if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
+  $public_only_view = isset($_GET['view']) && (string)$_GET['view'] === 'public';
   $fr_count = 0;
   try {
     $stmtFr = $db->prepare("SELECT COUNT(*) FROM user_friends WHERE user = ?");
@@ -768,6 +524,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
   $per_page = 5;
   $offset = ($page - 1) * $per_page;
   $is_owner = isset($_SESSION['user']) && $_SESSION['user'] === $user;
+  $show_owner_tools = $is_owner && !$public_only_view;
 
   $profile_icon_mode = '0';
   if ($is_owner) {
@@ -775,7 +532,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
   }
   $can_choose_avatar = $is_owner && $profile_icon_mode === '1';
 
-  if ($can_choose_avatar && isset($_GET['set_avatar'])) {
+  if ($can_choose_avatar && !$public_only_view && isset($_GET['set_avatar'])) {
     $set_id = intval($_GET['set_avatar']);
     if ($set_id > 0) {
       try {
@@ -797,7 +554,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
     exit;
   }
 
-  if ($is_owner) {
+  if ($show_owner_tools) {
     $stmt = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ?");
   } else {
     $stmt = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0");
@@ -806,7 +563,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
   $total = $stmt->fetchColumn();
   $total_pages = ceil($total / $per_page);
 
-  if ($is_owner) {
+  if ($show_owner_tools) {
     $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file, tags, private, original_filename FROM videos WHERE user = ? ORDER BY id DESC LIMIT $offset, $per_page");
   } else {
     $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file, tags, private, original_filename FROM videos WHERE user = ? AND private = 0 ORDER BY id DESC LIMIT $offset, $per_page");
@@ -815,6 +572,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
   $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
   $my_tags = [];
+  $private_count = 0;
   try {
     $stmtTags = $db->prepare("SELECT tags FROM videos WHERE user = ? AND private = 0 ORDER BY id DESC");
     $stmtTags->execute([$user]);
@@ -847,8 +605,34 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
   } catch (Exception $e) {
     $my_tags = [];
   }
+  if ($is_owner) {
+    try {
+      $stmtPrivCount = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 1");
+      $stmtPrivCount->execute([$user]);
+      $private_count = (int)$stmtPrivCount->fetchColumn();
+    } catch (Exception $e) {
+      $private_count = 0;
+    }
+  }
 
-  showHeader('Публичные видео // ' . htmlspecialchars($user));
+  $public_count_videos = 0;
+  try {
+    $stmtPubCnt = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0");
+    $stmtPubCnt->execute([$user]);
+    $public_count_videos = (int)$stmtPubCnt->fetchColumn();
+  } catch (Exception $e) {
+    $public_count_videos = 0;
+  }
+
+  if ($public_only_view) {
+    $sidebar_active = 'public';
+  } elseif ($show_owner_tools) {
+    $sidebar_active = 'private';
+  } else {
+    $sidebar_active = 'public';
+  }
+
+  showHeader((!$show_owner_tools ? 'Публичные видео // ' . htmlspecialchars($user) : 'Мои видео '));
     ?>
   <link rel="stylesheet" href="img/styles.css" type="text/css">
   <style>
@@ -860,16 +644,23 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
   </style>
 <link rel="stylesheet" href="img/base.css" type="text/css">
 <link rel="stylesheet" href="img/watch.css" type="text/css">
-	<div style="padding:8px 0 12px 0; text-align:center; font-size:13px;">
-  <a href="channel.php?user=<?=urlencode($user)?>">Профиль</a> |
-  <b>Видео</b> (<?= $total ?>)</a>
-  <a href="favourites.php?user=<?=urlencode($user)?>">Избранное (<?=$fav_count?>)</a> |
-  <a href="friends.php?user=<?=urlencode($user)?>">Друзья (<?=$fr_count?>)</a> |
-  <a href="channel.php?user=<?=urlencode($user)?>&tab=comments">Комментарии (<?=$comments_count?>)</a>
-</div>
+<?php if ($show_owner_tools): ?>
+      <table align="center" cellpadding="5" cellspacing="0" border="0">
+        <tbody><tr>
+          <td class="bold">Обзор</td>
+          <td>|</td>
+          <td><a href="help.php">Поделиться</a></td>
+          <td>|</td>
+          <td><a href="upload.php">Загрузка</a></td>
+          </tr>
+        </tbody>
+      </table>
+      <br>
+      <?php endif; ?>
     <table width="790" align="center" cellpadding="0" cellspacing="0" border="0">
     <tr valign="top">
       <td style="padding-right: 15px;">
+
         <table width="595" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#CCCCCC">
           <tr>
             <td><img src="img/box_login_tl.gif" width="5" height="5"></td>
@@ -883,9 +674,9 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
                 <table width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>
                     <td style="font-size:14px; font-weight:bold; color:#444; text-align:left; padding-left: 5px;  padding-bottom: 5px;">
-                      Публичные видео // <?=htmlspecialchars($user)?>
+                      <?= $show_owner_tools ? 'Мои видео' : 'Публичные видео // '  . htmlspecialchars($user) ?>
                     </td>
-                    <?php if (!$is_owner || (int)$total > 0): ?>
+                    <?php if (!$show_owner_tools || (int)$total > 0): ?>
                     <td style="font-size:12px; font-weight:bold; color:#444; text-align:right; padding-right:5px; padding-bottom: 7px; white-space:nowrap;">
                       Видео <?= ($offset + 1) ?>-<?= min($offset + $per_page, $total) ?> из <?= $total ?>
                     </td>
@@ -931,7 +722,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
                       <tr valign="top">
                         <td width="120" valign="top"><a href="video.php?id=<?=$vid_link?>"><img src="<?=htmlspecialchars($row['preview'])?>" class="moduleFeaturedThumb" width="120" height="90" style="margin: 0px 2px 0px 0px; display:block;"></a></td>
                         <td width="445" valign="top" style="padding-left:8px;">
-                          <?php if ($is_owner): ?>
+                          <?php if ($show_owner_tools): ?>
                           <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;"><tr valign="top">
                           <td valign="top">
                           <?php endif; ?>
@@ -987,7 +778,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
                           <?= channel_render_avg_stars_html($ra, $rc) ?>
                           </div>
 
-                          <?php if ($is_owner): ?>
+                          <?php if ($show_owner_tools): ?>
                           </td>
                           <td valign="top" width="133" style="padding-left:4px;">
     <?php if (is_valid_video_public_id($row['public_id'] ?? '')): ?>
@@ -1001,7 +792,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
                           </td>
                           </tr>
                           <?php endif; ?>
-                          <?php if ($is_owner): ?>
+                          <?php if ($show_owner_tools): ?>
                           <tr>
                           <td colspan="2">
                           
@@ -1055,8 +846,9 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
                   $start_page = max(1, $page - 2);
                   $end_page = min($total_pages, $page + 2);
                   
+                  $vf = $public_only_view ? '&view=public' : '';
                   if ($start_page > 1) {
-                      echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos&page=1">1</a></span>';
+                      echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos'.$vf.'&page=1">1</a></span>';
                       if ($start_page > 2) echo ' ... ';
                   }
                   
@@ -1064,17 +856,17 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
                       if ($i == $page) {
                           echo '<span class="pagerCurrent">'.$i.'</span>';
                       } else {
-                          echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos&page='.$i.'">'.$i.'</a></span>';
+                          echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos'.$vf.'&page='.$i.'">'.$i.'</a></span>';
                       }
                   }
                   
                   if ($end_page < $total_pages) {
                       if ($end_page < $total_pages - 1) echo ' ... ';
-                      echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos&page='.$total_pages.'">'.$total_pages.'</a></span>';
+                      echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos'.$vf.'&page='.$total_pages.'">'.$total_pages.'</a></span>';
                   }
                   
                   if ($page < $total_pages) {
-                      echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos&page='.($page + 1).'">Далее</a></span>';
+                      echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos'.$vf.'&page='.($page + 1).'">Далее</a></span>';
                   }
                   ?>
                 </div>
@@ -1090,32 +882,41 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
         </table>
       </td>
       <td width="180">
-        <table width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFEEBB">
-          <tr>
-            <td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-            <td><img src="img/pixel.gif" width="1" height="5"></td>
-            <td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-          </tr>
-          <tr>
-            <td><img src="img/pixel.gif" width="5" height="1"></td>
-            <td width="170">
-              <div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="help.php">Поделитесь видео с друзьями!</a></div>
-            </td>
-            <td><img src="img/pixel.gif" width="5" height="1"></td>
-          </tr>
-          <tr>
-            <td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-            <td><img src="img/pixel.gif" width="1" height="5"></td>
-            <td><img src="img/box_login_br.gif" width="5" height="5"></td>
-          </tr>
-        </table>
-        <?php if ($is_owner): ?>
+        <?php if ($show_owner_tools): ?>
+          <table width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFEEBB">
+            <tbody><tr>
+              <td><img src="img/box_login_tl.gif" width="5" height="5"></td>
+              <td><img src="img/pixel.gif" width="1" height="5"></td>
+              <td><img src="img/box_login_tr.gif" width="5" height="5"></td>
+            </tr>
+            <tr>
+              <td><img src="img/pixel.gif" width="5" height="1"></td>
+              <td width="170">
+                <div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="help.php">Поделитесь видео с друзьями!</a></div>
+              </td>
+              <td><img src="img/pixel.gif" width="5" height="1"></td>
+            </tr>
+            <tr>
+              <td><img src="img/box_login_bl.gif" width="5" height="5"></td>
+              <td><img src="img/pixel.gif" width="1" height="5"></td>
+              <td><img src="img/box_login_br.gif" width="5" height="5"></td>
+            </tr>
+          </tbody></table>
           <div style="font-weight: bold; color: #333; margin: 10px 0px 5px 0px;">Мои теги:</div>
           <?php if (!empty($my_tags)): ?>
             <?php foreach ($my_tags as $rt): ?>
-            <div style="padding: 0px 0px 4px 0px; color: #999;">&raquo; <a href="results.php?search_type=tag&amp;search_query=<?=urlencode((string)$rt['tag'])?>"><?=htmlspecialchars((string)$rt['tag'])?></a></div>
+              <div style="padding: 0px 0px 4px 0px; color: #999;">&raquo; <a href="results.php?search_type=tag&amp;search_query=<?=urlencode((string)$rt['tag'])?>"><?=htmlspecialchars((string)$rt['tag'])?></a></div>
             <?php endforeach; ?>
+          <?php else: ?>
+            <div style="font-size:12px;color:#666;">Тегов пока нет.</div>
           <?php endif; ?>
+        <?php else: ?>
+          <?= channel_sidebar_nav_html($user, $sidebar_active, [
+              'public' => $public_count_videos,
+              'private' => $is_owner ? $private_count : 0,
+              'fav' => $fav_count,
+              'friends' => $fr_count,
+          ]) ?>
         <?php endif; ?>
       </td>
     </tr>
@@ -1696,9 +1497,9 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'comments' && !isset($_GET[
 		? '<b>Профиль</b>' : '<a href="channel.php?user='.urlencode($user).'">Профиль</a>';
 	echo ' | ';
 	echo (isset($_GET['tab']) && $_GET['tab'] === 'videos')
-		? '<b>Видео ('.$total.')</b>' : '<a href="channel.php?user='.urlencode($user).'&tab=videos">Видео ('.$total.')</a>';
+		? '<b>Видео ('.$total.')</b>' : '<a href="channel.php?user='.urlencode($user).'&tab=videos&amp;view=public">Видео ('.$total.')</a>';
 	echo ' | ';
-	echo '<a href="favourites.php?user='.urlencode($user).'">Избранное ('.$fav_count.')</a> | ';
+	echo '<a href="favourites.php?user='.urlencode($user).'&from=channel">Избранное ('.$fav_count.')</a> | ';
 	$fr_count = 0;
 	try {
 		$stmtFr = $db->prepare("SELECT COUNT(*) FROM user_friends WHERE user = ?");
@@ -1710,6 +1511,11 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'comments' && !isset($_GET[
 		? '<b>Комментарии ('.$comments_count.')</b>' : '<a href="channel.php?user='.urlencode($user).'&tab=comments">Комментарии ('.$comments_count.')</a>';
 	echo '</div>';
     ?>
+    <?php if (isset($_SESSION['user']) && $_SESSION['user'] === $user): ?>
+    <div style="width:550px; margin:0 auto 8px auto; text-align:right; font-size:12px;">
+      <a href="dl_comments.php?user=<?=urlencode($user)?>" style="color:#0033cc; text-decoration:underline;">Скачать комментарии (.txt)</a>
+    </div>
+    <?php endif; ?>
     <table width="550" align="center" cellpadding="0" cellspacing="0" border="1" bordercolor="#666666" style="border-collapse:collapse; border:1px solid #666666; border-color:#666666;">
       <tr>
         <td colspan="2" style="background:#999999; color:#fff; font-weight:bold; padding:3px; border-right:1px solid #666666;">

@@ -10,14 +10,20 @@ $me = $_SESSION['user'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_mail'])) {
     $del_id = (int) ($_POST['mail_id'] ?? 0);
+    $is_sent_delete = isset($_POST['delete_sent']) && (string) $_POST['delete_sent'] === '1';
     if ($del_id > 0) {
         try {
-            $st = $db->prepare('DELETE FROM mail_inbox WHERE id = ? AND to_user = ?');
-            $st->execute([$del_id, $me]);
+            if ($is_sent_delete) {
+                $st = $db->prepare('DELETE FROM mail_inbox WHERE id = ? AND from_user = ?');
+                $st->execute([$del_id, $me]);
+            } else {
+                $st = $db->prepare('DELETE FROM mail_inbox WHERE id = ? AND to_user = ?');
+                $st->execute([$del_id, $me]);
+            }
         } catch (Exception $e) {
         }
     }
-    header('Location: my_messages.php');
+    header('Location: ' . ($is_sent_delete ? 'outbox.php' : 'my_messages.php'));
     exit;
 }
 
@@ -25,26 +31,36 @@ include 'template.php';
 $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $s = isset($_GET['s']) ? (string) $_GET['s'] : '';
 $s_q = rawurlencode($s);
+$is_sent_view = isset($_GET['sent']) && (string) $_GET['sent'] !== '' && (string) $_GET['sent'] !== '0';
 
 $msg = null;
 if ($id > 0) {
     try {
-        $st = $db->prepare('SELECT id, from_user, topic, content, sent_at, kind, comment_id, video_id, video_public_id, channel_login FROM mail_inbox WHERE id = ? AND to_user = ?');
-        $st->execute([$id, $me]);
+        if ($is_sent_view) {
+            $st = $db->prepare('SELECT id, to_user, from_user, topic, content, sent_at, kind, comment_id, video_id, video_public_id, channel_login FROM mail_inbox WHERE id = ? AND from_user = ?');
+            $st->execute([$id, $me]);
+        } else {
+            $st = $db->prepare('SELECT id, to_user, from_user, topic, content, sent_at, kind, comment_id, video_id, video_public_id, channel_login FROM mail_inbox WHERE id = ? AND to_user = ?');
+            $st->execute([$id, $me]);
+        }
         $msg = $st->fetch(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
     }
 }
 
 if (!$msg) {
-    header('Location: my_messages.php');
+    header('Location: ' . ($is_sent_view ? 'outbox.php' : 'my_messages.php'));
     exit;
 }
 
-mark_mail_seen($db, $id, $me);
+if (!$is_sent_view) {
+    mark_mail_seen($db, $id, $me);
+}
 
 $from = (string) $msg['from_user'];
 $from_h = htmlspecialchars($from, ENT_QUOTES, 'UTF-8');
+$to_user = (string) ($msg['to_user'] ?? '');
+$to_h = htmlspecialchars($to_user, ENT_QUOTES, 'UTF-8');
 $body_h = htmlspecialchars((string) $msg['content'], ENT_QUOTES, 'UTF-8');
 $topic_raw = trim((string) ($msg['topic'] ?? ''));
 $topic_h = htmlspecialchars($topic_raw !== '' ? $topic_raw : mail_list_preview((string) $msg['content']), ENT_QUOTES, 'UTF-8');
@@ -61,24 +77,30 @@ $sent_str = (int) date('j', $ts) . ' ' . $months_ru[(int) date('n', $ts)] . ' ' 
 
 $vid_count = 0;
 $fav_count = 0;
-try {
-    $st = $db->prepare('SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0');
-    $st->execute([$from]);
-    $vid_count = (int) $st->fetchColumn();
-    $st2 = $db->prepare('SELECT COUNT(*) FROM user_favourites WHERE user = ?');
-    $st2->execute([$from]);
-    $fav_count = (int) $st2->fetchColumn();
-} catch (Exception $e) {
+if (!$is_sent_view) {
+    try {
+        $st = $db->prepare('SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0');
+        $st->execute([$from]);
+        $vid_count = (int) $st->fetchColumn();
+        $st2 = $db->prepare('SELECT COUNT(*) FROM user_favourites WHERE user = ?');
+        $st2->execute([$from]);
+        $fav_count = (int) $st2->fetchColumn();
+    } catch (Exception $e) {
+    }
 }
 
-$n = mail_prev_next($db, $me, $id);
+if ($is_sent_view) {
+    $n = mail_sent_prev_next($db, $me, $id);
+} else {
+    $n = mail_prev_next($db, $me, $id);
+}
 $prev_href = '';
 if ($n['prev'] !== null) {
-    $prev_href = 'read_msg.php?id=' . (int) $n['prev'] . '&s=' . $s_q;
+    $prev_href = 'read_msg.php?id=' . (int) $n['prev'] . ($is_sent_view ? '&sent=1' : '') . '&s=' . $s_q;
 }
 $next_href = '';
 if ($n['next'] !== null) {
-    $next_href = 'read_msg.php?id=' . (int) $n['next'] . '&s=' . $s_q;
+    $next_href = 'read_msg.php?id=' . (int) $n['next'] . ($is_sent_view ? '&sent=1' : '') . '&s=' . $s_q;
 }
 
 $ctx_link = '';
@@ -98,6 +120,16 @@ if ($kind === 'profile_comment' && $ch) {
 
 showHeader('Сообщение');
 ?>
+<?php if ($is_sent_view): ?>
+<div class="tableSubTitle">Исходящие сообщения</div>
+<table width="45%" align="center" cellpadding="5" cellspacing="0" border="0">
+    <tr align="center">
+        <td align="center" colspan="3">
+            <a href="my_messages.php">Входящие сообщения</a> | <a href="outbox.php" class="bold">Исходящие сообщения</a>
+        </td>
+    </tr>
+</table>
+<?php endif; ?>
 <table width="100%" align="center" cellpadding="1" cellspacing="1" border="0" bgcolor="#EEEEEE">
 <tbody>
 <tr>
@@ -109,6 +141,12 @@ showHeader('Сообщение');
 	<table width="75%" cellpadding="4" cellspacing="9" align="center" border="0">
 	<tbody>
 	<tr><td colspan="2" height="10" width="35" align="right"></td></tr>
+	<?php if ($is_sent_view): ?>
+	<tr valign="top">
+		<td align="right" valign="top"><span class="label">Кому:</span></td>
+		<td><a href="channel.php?user=<?= rawurlencode($to_user) ?>"><?= $to_h ?></a></td>
+	</tr>
+	<?php else: ?>
 	<tr valign="top">
 		<td align="right" valign="top"><span class="label">От:</span></td>
 		<td><a href="channel.php?user=<?= rawurlencode($from) ?>"><?= $from_h ?></a></td>
@@ -117,6 +155,7 @@ showHeader('Сообщение');
 		<td align="right">&nbsp;</td>
 		<td><a href="channel.php?user=<?= rawurlencode($from) ?>&amp;tab=videos">Видео</a> (<?= (int) $vid_count ?>) | <a href="favourites.php?user=<?= rawurlencode($from) ?>">Избранное</a> (<?= (int) $fav_count ?>)</td>
 	</tr>
+	<?php endif; ?>
 	<tr valign="top">
 		<td align="right" valign="top"><span class="label">Отправлено:</span></td>
 		<td><?= htmlspecialchars($sent_str, ENT_QUOTES, 'UTF-8') ?></td>
@@ -132,6 +171,7 @@ showHeader('Сообщение');
 	<tr valign="top">
 		<td align="right" valign="top"></td>
 		<td><form method="post" action="read_msg.php" onsubmit="return confirm('Подтвердите: сообщение будет удалено без возможности восстановления.');">
+			<?php if ($is_sent_view): ?><input type="hidden" name="delete_sent" value="1"><?php endif; ?>
 			<input type="hidden" name="delete_mail" value="1">
 			<input type="hidden" name="mail_id" value="<?= (int) $id ?>">
 			<input type="submit" value="Удалить сообщение" style="width:135px;">

@@ -24,8 +24,21 @@ function rss_video_page_url(array $video): string {
 
 $base = rss_absolute_base();
 $tagParam = isset($_GET['tag']) ? trim((string)$_GET['tag']) : '';
+$userParam = isset($_GET['user']) ? trim((string)$_GET['user']) : '';
 
-if ($tagParam !== '') {
+if ($userParam !== '') {
+    $stmt = $db->prepare(
+        'SELECT * FROM videos WHERE user = ? AND (private = 0 OR private IS NULL) AND ' .
+        visible_video_sql_condition('videos', 'user') .
+        ' ORDER BY id DESC LIMIT 15'
+    );
+    $stmt->execute([$userParam]);
+    $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $channel_title = 'RetroShow - канал ' . $userParam;
+    $channel_desc = 'Последние публичные видео канала ' . $userParam . '.';
+    $channel_link = $base . '/channel.php?user=' . rawurlencode($userParam);
+} elseif ($tagParam !== '') {
     $needle = mb_strtolower($tagParam, 'UTF-8');
     $needle_words = preg_split('/\s+/', $needle, -1, PREG_SPLIT_NO_EMPTY);
 

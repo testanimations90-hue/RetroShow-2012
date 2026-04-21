@@ -178,7 +178,7 @@ showHeader('Сообщения');
                             $preview_h = htmlspecialchars($preview, ENT_QUOTES, 'UTF-8');
                             $ts = (int)($row['sent_at'] ?? time());
                             $date_str = $days_ru[(int)date('w', $ts)] . ', ' . (int)date('j', $ts) . ' ' . $months_ru[(int)date('n', $ts)] . ' ' . date('Y', $ts);
-                            $href = 'sent_msg.php?id=' . $mid;
+                            $href = 'read_msg.php?id=' . $mid . '&sent=1';
                         ?>
                         <tr bgcolor="#eeeeee">
                             <td width="5"><img src="img/mail.gif" alt=""></td>

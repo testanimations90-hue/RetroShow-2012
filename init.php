@@ -924,4 +924,54 @@ function mail_prev_next(PDO $db, string $user, int $id): array {
     return ['prev' => $prev, 'next' => $next];
 }
 
+function mail_sent_prev_next(PDO $db, string $user, int $id): array {
+    try {
+        $st = $db->prepare('SELECT id FROM mail_inbox WHERE from_user = ? ORDER BY sent_at DESC, id DESC');
+        $st->execute([$user]);
+        $ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN, 0));
+    } catch (Exception $e) {
+        return ['prev' => null, 'next' => null];
+    }
+    $idx = array_search($id, $ids, true);
+    if ($idx === false) {
+        return ['prev' => null, 'next' => null];
+    }
+    $prev = $idx > 0 ? $ids[$idx - 1] : null;
+    $next = $idx < count($ids) - 1 ? $ids[$idx + 1] : null;
+    return ['prev' => $prev, 'next' => $next];
+}
+
+function channel_sidebar_nav_html(string $channelUser, string $active, array $counts): string {
+    $u = rawurlencode($channelUser);
+    $pub = (int)($counts['public'] ?? 0);
+    $priv = (int)($counts['private'] ?? 0);
+    $fav = (int)($counts['fav'] ?? 0);
+    $fr = (int)($counts['friends'] ?? 0);
+
+    $items = [
+        ['key' => 'profile', 'label' => 'Профиль', 'href' => 'channel.php?user=' . $u, 'count' => null],
+        ['key' => 'public', 'label' => 'Видео', 'href' => 'channel.php?user=' . $u . '&tab=videos&view=public', 'count' => $pub],
+        ['key' => 'private', 'label' => 'Приватные видео', 'href' => 'channel.php?user=' . $u . '&tab=videos', 'count' => $priv],
+        ['key' => 'favorites', 'label' => 'Избранные', 'href' => 'favourites.php?user=' . $u . '&from=channel', 'count' => $fav],
+        ['key' => 'friends', 'label' => 'Друзья', 'href' => 'friends.php?user=' . $u, 'count' => $fr],
+    ];
+
+    ob_start();
+    foreach ($items as $idx => $item) {
+        $isActive = ($active === $item['key']);
+        $mb = ($idx === count($items) - 1) ? '20px' : '10px';
+        echo '<div style="font-size:14px;font-weight:bold;margin-bottom:' . $mb . ';color:#444;">&raquo; ';
+        if ($isActive) {
+            echo htmlspecialchars($item['label'], ENT_QUOTES, 'UTF-8');
+        } else {
+            echo '<a href="' . htmlspecialchars($item['href'], ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($item['label'], ENT_QUOTES, 'UTF-8') . '</a>';
+            if ($item['count'] !== null) {
+                echo ' (' . $item['count'] . ')';
+            }
+        }
+        echo '</div>';
+    }
+    return ob_get_clean();
+}
+
 // -------------------------------------------------------------------------------------------------

@@ -119,11 +119,16 @@ function favourites_render_avg_stars_html($avg, $count) {
 }
 
 $user = isset($_GET['user']) ? $_GET['user'] : (isset($_SESSION['user']) ? $_SESSION['user'] : null);
+$from_channel = isset($_GET['from']) && (string)$_GET['from'] === 'channel';
 
 if (isset($_SESSION['user']) && $user === $_SESSION['user'] && isset($_POST['remove_fav']) && isset($_POST['video_id'])) {
     $db->prepare("DELETE FROM user_favourites WHERE user = ? AND video_id = ?")
        ->execute([$user, intval($_POST['video_id'])]);
-    header('Location: favourites.php?user=' . urlencode($user));
+    $redir = 'favourites.php?user=' . urlencode($user);
+    if ($from_channel) {
+        $redir .= '&from=channel';
+    }
+    header('Location: ' . $redir);
     exit;
 }
 
@@ -160,7 +165,7 @@ $is_own = isset($_SESSION['user']) && $user === $_SESSION['user'];
 $user_disp = htmlspecialchars($user);
 
 $my_tags = [];
-if ($is_own && !empty($videos)) {
+if ($is_own && !$from_channel && !empty($videos)) {
     $tag_stats = [];
     foreach ($videos as $row) {
         $tags_raw = trim((string)($row['tags'] ?? ''));
@@ -211,25 +216,23 @@ $total = $stmt_total->fetchColumn();
 
 $comments_count = 0;
 $comments_count = 0;
+ $private_count = 0;
 try {
     $stmtPc = $db->prepare("SELECT COUNT(*) FROM profile_comments WHERE profile_user = ?");
     $stmtPc->execute([$user]);
     $comments_count = (int)$stmtPc->fetchColumn();
 } catch (Exception $e) {}
-
-echo '<div style="padding:8px 0 12px 0; text-align:center; font-size:13px;">';
-echo '<a href="channel.php?user='.urlencode($user).'">Профиль</a> | ';
-echo '<a href="channel.php?user='.urlencode($user).'&tab=videos">Видео ('.$total.')</a> | ';
-echo '<b>Избранное ('.count($fav_list).')</b> | ';
+try {
+    $stmtPriv = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 1");
+    $stmtPriv->execute([$user]);
+    $private_count = (int)$stmtPriv->fetchColumn();
+} catch (Exception $e) {}
 $fr_count = 0;
 try {
     $stmtFr = $db->prepare("SELECT COUNT(*) FROM user_friends WHERE user = ?");
     $stmtFr->execute([$user]);
     $fr_count = (int)$stmtFr->fetchColumn();
 } catch (Exception $e) {}
-echo '<a href="friends.php?user='.urlencode($user).'">Друзья ('.$fr_count.')</a> | ';
-echo '<a href="channel.php?user='.urlencode($user).'&tab=comments">Комментарии ('.$comments_count.')</a>';
-echo '</div>';
 ?>
 <table width="790" align="center" cellpadding="0" cellspacing="0" border="0">
   <tr valign="top">
@@ -283,7 +286,19 @@ echo '</div>';
                 <div style="background-color:#DDD; background-image:url('img/table_results_bg.gif'); background-position:left top; background-repeat:repeat-x; border-bottom:1px dashed #999999; padding:10px;">
                   <table width="565" cellpadding="0" cellspacing="0" border="0">
                     <tr valign="top">
-                      <td width="120" valign="top"><a href="video.php?id=<?=$vid_link?>"><img src="<?=htmlspecialchars($video['preview'])?>" class="moduleFeaturedThumb" width="120" height="90" style="margin: 0px 2px 0px 0px; display:block;"></a></td>
+                      <td width="120" valign="top"><a href="video.php?id=<?=$vid_link?>"><img src="<?=htmlspecialchars($video['preview'])?>" class="moduleFeaturedThumb" width="120" height="90" style="margin: 0px 2px 0px 0px; display:block;"></a>
+                      <div style="margin-top: 5px; align: center">
+                      <center>
+                      <?php if ($is_own): ?>
+                      <form method="post" action="favourites.php?user=<?=urlencode($user)?><?php if ($from_channel): ?>&amp;from=channel<?php endif; ?>" onsubmit="return confirm('Убрать это видео из избранного?');" style="margin:0;">
+                        <input type="hidden" name="remove_fav" value="1">
+                        <input type="hidden" name="video_id" value="<?=intval($video['id'])?>">
+                        <input type="submit" value="Удалить видео">
+                      </form>
+                      <?php endif; ?>
+                      </center>
+                      </div>
+                      </td>
                       <td width="100%" style="padding-left:8px;">
                         <div class="moduleEntryTitle">
                           <a href="video.php?id=<?=$vid_link?>"><?=htmlspecialchars($video['title'])?></a>
@@ -335,11 +350,6 @@ echo '</div>';
                           Время: <?=get_video_duration_fast($video['file'], $video['id'], $video['public_id'] ?? '')?> | Просмотров: <?= intval($video['views']) ?> | Комментариев: <?= intval($comments_count) ?>
                         </div>
                         <?= favourites_render_avg_stars_html($ra, $rc) ?>
-                        <?php if ($is_own): ?>
-                        <div class="moduleEntryDetails">
-                        <form method="post" style="margin:0; display:inline;"><input type="hidden" name="remove_fav" value="1"><input type="hidden" name="video_id" value="<?=intval($video['id'])?>"><a href="#" onclick="this.parentNode.submit();return false;" style="color:#0033cc; text-decoration:underline; cursor:pointer;">Удалить из избранного</a></form>
-                        </div>
-                        <?php endif; ?>
                         </div>
                       </td>
                     </tr>
@@ -386,14 +396,20 @@ echo '</div>';
       </table>
     </td>
     <td width="180">
-    <?php if ($is_own): ?>
-          <div style="font-weight: bold; color: #333; margin: 0px 0px 5px 0px;">Любимые теги:</div>
-          <?php if (!empty($my_tags)): ?>
-            <?php foreach ($my_tags as $rt): ?>
-            <div style="padding: 0px 0px 4px 0px; color: #999;">&raquo; <a href="results.php?search_type=tag&amp;search_query=<?=urlencode((string)$rt['tag'])?>"><?=htmlspecialchars((string)$rt['tag'])?></a></div>
-            <?php endforeach; ?>
-          <?php endif; ?>
-        <?php endif; ?>
+      <?= channel_sidebar_nav_html($user, 'favorites', [
+          'public' => (int)$total,
+          'private' => $is_own ? (int)$private_count : 0,
+          'fav' => (int)$fav_total,
+          'friends' => (int)$fr_count,
+      ]) ?>
+      <?php if ($is_own && !$from_channel): ?>
+      <div style="font-weight: bold; color: #333; margin: 0px 0px 5px 0px;">Любимые теги:</div>
+      <?php if (!empty($my_tags)): ?>
+      <?php foreach ($my_tags as $rt): ?>
+      <div style="padding: 0px 0px 4px 0px; color: #999;">&raquo; <a href="results.php?search_type=tag&amp;search_query=<?=urlencode((string)$rt['tag'])?>"><?=htmlspecialchars((string)$rt['tag'])?></a></div>
+      <?php endforeach; ?>
+      <?php endif; ?>
+      <?php endif; ?>
     </td>
   </tr>
 </table>

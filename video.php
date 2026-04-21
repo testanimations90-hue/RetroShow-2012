@@ -1014,20 +1014,41 @@ if ($user) {
     $is_fav = (bool)$qFav->fetchColumn();
 }
 
-if ($user && isset($_GET['fav_add']) && $_GET['fav_add'] == 1) {
+function render_video_fav_action_html($is_fav, $video_id_param, $user) {
+    $video_id_h = htmlspecialchars((string)$video_id_param, ENT_QUOTES, 'UTF-8');
+    if (!$user) {
+        return '<img src="img/fav_w_icon.gif" width="19" height="17" align="absmiddle"> <a href="login.php" style="color:#0033cc; text-decoration:none;">Войти, чтобы добавить в избранное</a>';
+    }
+    if ($is_fav) {
+        return '<a href="video.php?id=' . $video_id_h . '&fav_del=1" onclick="return favToggle(\'del\');" style="color:#0033cc; text-decoration:none;"><img src="img/fav_w_icon.gif" width="19" height="17" align="absmiddle" border="0"> Убрать из избранного</a>';
+    }
+    return '<a href="video.php?id=' . $video_id_h . '&fav_add=1" onclick="return favToggle(\'add\');" style="color:#0033cc; text-decoration:none;"><img src="img/fav_w_icon.gif" width="19" height="17" align="absmiddle" border="0"> Добавить в избранное</a>';
+}
+
+$want_fav_add = ($user && isset($_GET['fav_add']) && (string)$_GET['fav_add'] === '1');
+$want_fav_del = ($user && isset($_GET['fav_del']) && (string)$_GET['fav_del'] === '1');
+$is_ajax_fav = isset($_GET['fav_ajax']) && (string)$_GET['fav_ajax'] === '1';
+
+if ($want_fav_add) {
     if (!$is_fav) {
         $db->prepare("INSERT OR IGNORE INTO user_favourites (user, video_id, created_at) VALUES (?, ?, ?)")
            ->execute([$user, $id, time()]);
+        $is_fav = true;
     }
-    header("Location: video.php?id=" . urlencode($video['public_id'] ?? $id));
-    exit;
+    if (!$is_ajax_fav) {
+        header("Location: video.php?id=" . urlencode($video['public_id'] ?? $id));
+        exit;
+    }
 }
-if ($user && isset($_GET['fav_del']) && $_GET['fav_del'] == 1) {
+if ($want_fav_del) {
     if ($is_fav) {
         $db->prepare("DELETE FROM user_favourites WHERE user = ? AND video_id = ?")->execute([$user, $id]);
+        $is_fav = false;
     }
-    header("Location: video.php?id=" . urlencode($video['public_id'] ?? $id));
-    exit;
+    if (!$is_ajax_fav) {
+        header("Location: video.php?id=" . urlencode($video['public_id'] ?? $id));
+        exit;
+    }
 }
 $fav_count = 0;
 try {
@@ -1036,6 +1057,14 @@ try {
     $fav_count = (int)$stmtFavCount->fetchColumn();
 } catch (Exception $e) {
     $fav_count = 0;
+}
+
+if ($is_ajax_fav && ($want_fav_add || $want_fav_del)) {
+    header('Content-Type: text/plain; charset=UTF-8');
+    $video_id_param_out = $video['public_id'] ?? $id;
+    $html = render_video_fav_action_html($is_fav, $video_id_param_out, $user);
+    echo ($is_fav ? '1' : '0') . "\t" . (int)$fav_count . "\t" . $html;
+    exit;
 }
 
 list($ratings_count, $avg_rating) = get_video_rating_stats($db, $id);
@@ -1050,6 +1079,50 @@ function performOnLoadFunctions() {
     for (var i = 0; i < onLoadFunctionList.length; i++) {
         onLoadFunctionList[i]();
     }
+}
+
+function favCreateXHR() {
+    if (window.XMLHttpRequest) return new XMLHttpRequest();
+    try { return new ActiveXObject("Msxml2.XMLHTTP"); } catch (e) {}
+    try { return new ActiveXObject("Microsoft.XMLHTTP"); } catch (e2) {}
+    return null;
+}
+
+function favToggle(action) {
+    var xid = "<?=htmlspecialchars((string)($video['public_id'] ?? $id), ENT_QUOTES, 'UTF-8')?>";
+    var xhr = favCreateXHR();
+    if (!xhr) {
+        if (action === 'add') { window.location = "video.php?id=" + escape(xid) + "&fav_add=1"; }
+        else { window.location = "video.php?id=" + escape(xid) + "&fav_del=1"; }
+        return false;
+    }
+
+    var url = "video.php?id=" + escape(xid) + "&fav_ajax=1";
+    if (action === 'add') url += "&fav_add=1";
+    else url += "&fav_del=1";
+
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status && xhr.status !== 200) {
+            if (action === 'add') { window.location = "video.php?id=" + escape(xid) + "&fav_add=1"; }
+            else { window.location = "video.php?id=" + escape(xid) + "&fav_del=1"; }
+            return;
+        }
+        var t = xhr.responseText || "";
+        var p = t.split("\t");
+        if (p.length < 3) return;
+        var favHtml = p.slice(2).join("\t");
+        var a = document.getElementById("favAction");
+        if (a) a.innerHTML = favHtml;
+        var c = document.getElementById("favCount");
+        if (c) c.innerHTML = p[1];
+        var c2 = document.getElementById("favCount2");
+        if (c2) c2.innerHTML = p[1];
+        if (action === 'add') alert('Добавлено в избранное.');
+        else alert('Убрано из избранного.');
+    };
+    try { xhr.open("GET", url, true); xhr.send(null); } catch (e3) {}
+    return false;
 }
 </script>
 <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
@@ -1423,17 +1496,7 @@ echo $user ? render_rating_inner_html($id, (string)($video['public_id'] ?? ''), 
 		</div>
 		<div id="actionsDiv" style="float:left; width:32%; padding:4px;">
 			<div class="actionRow" style="font-size:12px;">
-        <?php if ($user): ?>
-<?php if ($is_fav): ?>
-  <a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $id)?>&fav_del=1" style="color:#0033cc; text-decoration:none;"><img src="img/fav_w_icon.gif" width="19" height="17" align="absmiddle" border="0"> Убрать из избранного</a>
-<?php else: ?>
-  <a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $id)?>&fav_add=1" style="color:#0033cc; text-decoration:none;"><img src="img/fav_w_icon.gif" width="19" height="17" align="absmiddle" border="0"> Добавить в избранное</a>
-<?php endif; ?>
-<br>
-<?php else: ?>
-<img src="img/fav_w_icon.gif" width="19" height="17" align="absmiddle"> <a href="login.php" style="color:#0033cc; text-decoration:none;">Войти, чтобы добавить в избранное</a>
-<br>
-<?php endif; ?>
+        <span id="favAction"><?php echo render_video_fav_action_html($is_fav, ($video['public_id'] ?? $id), $user); ?></span><br>
 <a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $id)?>&download=avi" style="color:#0033cc; text-decoration:none; font-size:12px;"><img src="img/web_w_icon.gif" border="0" width="19" height="17" align="absmiddle"> Скачать видео в AVI</a> (или <a href="get_video.php?id=<?=urlencode($video['public_id'] ?? '')?>" style="color:#0033cc; text-decoration:none; font-size:12px;">MP4</a>)<br>
 			</div>
 		</div>
@@ -1441,7 +1504,7 @@ echo $user ? render_rating_inner_html($id, (string)($video['public_id'] ?? ''), 
 			<div class="statRow">
       <b>Просмотров:</b> <?=intval($video['views'])?><br>
       <b>Комментариев:</b> <?=$comments_count?><br>
-      <b>Понравилось:</b> <?=$fav_count?> раз<br>
+      <b>Понравилось:</b> <span id="favCount"><?= (int)$fav_count ?></span> раз<br>
 			</div>
 		</div>
 		<div style="clear:both;"></div>
@@ -1459,23 +1522,14 @@ echo $user ? render_rating_inner_html($id, (string)($video['public_id'] ?? ''), 
           </td>
           <td width="34%">
             <div style="font-size:12px;">
-            <?php if ($user): ?>
-              <?php if ($is_fav): ?>
-                <a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $id)?>&fav_del=1" style="color:#0033cc; text-decoration:none;"><img src="img/fav_w_icon.gif" width="19" height="17" align="absmiddle" border="0"> Убрать из избранного</a>
-              <?php else: ?>
-                <a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $id)?>&fav_add=1" style="color:#0033cc; text-decoration:none;"><img src="img/fav_w_icon.gif" width="19" height="17" align="absmiddle" border="0"> Добавить в избранное</a>
-              <?php endif; ?>
-              <br>
-            <?php else: ?>
-              <img src="img/fav_w_icon.gif" width="19" height="17" align="absmiddle"> <a href="login.php" style="color:#0033cc;">Войти, чтобы добавить в избранное</a><br>
-            <?php endif; ?>
+              <span id="favAction2"><?php echo render_video_fav_action_html($is_fav, ($video['public_id'] ?? $id), $user); ?></span><br>
               <a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $id)?>&download=avi" style="color:#0033cc; text-decoration:none; font-size:12px;"><img src="img/web_w_icon.gif" border="0" width="19" height="17" align="absmiddle"> Скачать видео в AVI</a> (или <a href="get_video.php?video_id=<?=urlencode($video['public_id'] ?? '')?>" style="color:#0033cc; text-decoration:none; font-size:12px;">MP4</a>)
             </div>
           </td>
           <td width="33%" style="font-size:12px; color:#333;">
             <b>Просмотров:</b> <?=intval($video['views'])?><br>
             <b>Комментариев:</b> <?=$comments_count?><br>
-            <b>Понравилось:</b> <?=$fav_count?> раз
+            <b>Понравилось:</b> <span id="favCount2"><?= (int)$fav_count ?></span> раз
           </td>
         </tr>
       </table>
@@ -1864,7 +1918,7 @@ $desc_short = mb_strlen($desc) > 50 ? mb_substr($desc, 0, 50) . '...' : $desc;
         <?php endif; ?>
         <tr><td class="label">URL</td>
         <td>
-        <input name="video_link" value="http://<?=$_SERVER['HTTP_HOST']?>/video.php?id=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>" class="vidURLField" onclick="javascript:document.urlForm.video_link.focus();document.urlForm.video_link.select();" readonly="true" type="text">
+        <input name="video_link" value="http://<?=$_SERVER['HTTP_HOST']?>/?v=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>" class="vidURLField" onclick="javascript:document.urlForm.video_link.focus();document.urlForm.video_link.select();" readonly="true" type="text">
         </td>
         </tr>
         <?php $embed_file_base = video_uploads_file_base((int)$video['id'], $video['public_id'] ?? ''); ?>

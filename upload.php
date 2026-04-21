@@ -395,12 +395,12 @@ showHeader("Загрузка видео");
         <td class="upload-label" valign="top"><b>Теги:</b></td>
         <td class="upload-input">
           <input type="text" name="tags" value="<?=htmlspecialchars($tags)?>" style="width: 250px; font-size: 13px;">
-          <br>
-          <span class="smallText"><b>Введите один или несколько тегов, описывающих ваше видео, через пробел.</b>
-          <br>
-          Лучше использовать релевантные ключевые слова, чтобы другие пользователи могли найти ваше видео!</span><br><br>
         </td>
       </tr>
+      <tr align="left">
+		<td></td>
+	    <td><div class="formFieldInfo"><strong>Введите один или несколько тегов, описывающих ваше видео, через пробел.</strong><br>Лучше использовать релевантные ключевые слова, чтобы другие пользователи могли найти ваше видео!</div></td>
+	  </tr>
       <tr>
         <td></td>
         <td class="upload-btn"><input type="submit" value="Далее ->" style="font-size: 13px;"></td>
