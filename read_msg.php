@@ -108,8 +108,8 @@ $ctx_label = '';
 $ch = $msg['channel_login'] ?? null;
 $pub = $msg['video_public_id'] ?? null;
 if ($kind === 'profile_comment' && $ch) {
-    $ctx_link = 'channel.php?user=' . rawurlencode((string) $ch) . '&tab=comments';
-    $ctx_label = 'Перейти к комментариям на канале.';
+    $ctx_link = 'channel.php?user=' . rawurlencode((string) $ch);
+    $ctx_label = 'Перейти на канал.';
 } elseif ($kind === 'video_reply' && $pub) {
     $ctx_link = 'video.php?id=' . rawurlencode((string) $pub) . '#comments';
     $ctx_label = 'Перейти к ветке комментариев под видео.';

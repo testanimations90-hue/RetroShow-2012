@@ -26,6 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $video_rows[] = $v;
         }
 		
+        try { channel_moderation_remove_user($user); } catch (Exception $e) {}
         $db->prepare('DELETE FROM users WHERE login = ?')->execute([$user]);
         $db->prepare('DELETE FROM video_views WHERE user = ?')->execute([$user]);
         $db->prepare('DELETE FROM videos WHERE user = ?')->execute([$user]);
@@ -39,7 +40,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $playlists_file = __DIR__ . '/playlists/' . urlencode($user) . '.txt';
         if (file_exists($playlists_file)) unlink($playlists_file);
 		
-        try { $db->prepare('DELETE FROM profile_comments WHERE profile_user = ? OR user = ?')->execute([$user, $user]); } catch (Exception $e) {}
         try { $db->prepare('DELETE FROM mail_inbox WHERE to_user = ? OR from_user = ?')->execute([$user, $user]); } catch (Exception $e) {}
 		
         foreach ($video_rows as $vr) {

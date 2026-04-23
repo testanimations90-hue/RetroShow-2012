@@ -32,6 +32,7 @@ function rus_date($time) {
     return "$d $m $y";
 }
 
+/** videos.time may be Unix int or string from upload (d.m.Y, H:i). */
 function channel_video_rus_date_from_db($timeVal): string {
     if ($timeVal === null || $timeVal === '') {
         return rus_date(time());
@@ -386,7 +387,7 @@ if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
                         <td width="120" align="right"><span class="label">Имя пользователя:</span></td>
                         <td><?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?></td>
                     </tr>
-
+                    <!-- Personal Information: -->
                     <?php if ($name_text !== ''): ?>
                     <tr>
                         <td align="right"><span class="label">Имя:</span></td>
@@ -414,7 +415,7 @@ if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
                     <tr>
                         <td colspan="2">&nbsp;</td>
                     </tr>
-
+                    <!-- Location Information -->
                     <?php if (!empty($user_data['hometown'])): ?>
                     <tr>
                         <td align="right"><span class="label">Родной город:</span></td>
@@ -436,7 +437,7 @@ if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
                     <tr>
                         <td colspan="2">&nbsp;</td>
                     </tr>
-
+                    <!-- Random Information -->
                     <tr>
                         <td align="right"><span class="label">Последний вход:</span></td>
                         <td><?= htmlspecialchars(ago_ru($last_login_time), ENT_QUOTES, 'UTF-8') ?></td>
@@ -632,7 +633,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
     $sidebar_active = 'public';
   }
 
-  showHeader((!$show_owner_tools ? 'Публичные видео // ' . htmlspecialchars($user) : 'Мои видео '));
+  showHeader(($public_only_view ? 'Публичные видео // ' . htmlspecialchars($user) : 'Мои видео '));
     ?>
   <link rel="stylesheet" href="img/styles.css" type="text/css">
   <style>
@@ -644,23 +645,9 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
   </style>
 <link rel="stylesheet" href="img/base.css" type="text/css">
 <link rel="stylesheet" href="img/watch.css" type="text/css">
-<?php if ($show_owner_tools): ?>
-      <table align="center" cellpadding="5" cellspacing="0" border="0">
-        <tbody><tr>
-          <td class="bold">Обзор</td>
-          <td>|</td>
-          <td><a href="help.php">Поделиться</a></td>
-          <td>|</td>
-          <td><a href="upload.php">Загрузка</a></td>
-          </tr>
-        </tbody>
-      </table>
-      <br>
-      <?php endif; ?>
     <table width="790" align="center" cellpadding="0" cellspacing="0" border="0">
     <tr valign="top">
       <td style="padding-right: 15px;">
-
         <table width="595" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#CCCCCC">
           <tr>
             <td><img src="img/box_login_tl.gif" width="5" height="5"></td>
@@ -883,26 +870,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
       </td>
       <td width="180">
         <?php if ($show_owner_tools): ?>
-          <table width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFEEBB">
-            <tbody><tr>
-              <td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-              <td><img src="img/pixel.gif" width="1" height="5"></td>
-              <td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-            </tr>
-            <tr>
-              <td><img src="img/pixel.gif" width="5" height="1"></td>
-              <td width="170">
-                <div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="help.php">Поделитесь видео с друзьями!</a></div>
-              </td>
-              <td><img src="img/pixel.gif" width="5" height="1"></td>
-            </tr>
-            <tr>
-              <td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-              <td><img src="img/pixel.gif" width="1" height="5"></td>
-              <td><img src="img/box_login_br.gif" width="5" height="5"></td>
-            </tr>
-          </tbody></table>
-          <div style="font-weight: bold; color: #333; margin: 10px 0px 5px 0px;">Мои теги:</div>
+          <div style="font-weight: bold; color: #333; margin: 0px 0px 5px 0px;">Мои теги:</div>
           <?php if (!empty($my_tags)): ?>
             <?php foreach ($my_tags as $rt): ?>
               <div style="padding: 0px 0px 4px 0px; color: #999;">&raquo; <a href="results.php?search_type=tag&amp;search_query=<?=urlencode((string)$rt['tag'])?>"><?=htmlspecialchars((string)$rt['tag'])?></a></div>
@@ -1140,24 +1108,52 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
 <tr valign="bottom">
 		<td>
 		
-		<div id="gNavDiv">
-			<?php
-			$current_script = strtolower(basename($_SERVER['SCRIPT_NAME']));
-			$tabs = [
-				['index.php', 'Главная', 'index.php'],
-				['channel.php,favourites.php,friends.php', 'Смотреть&nbsp;видео', 'channel.php'],
-				['upload.php', 'Загрузить&nbsp;видео', 'upload.php'],
-				['my_friends_invite.php', 'Пригласить&nbsp;друзей', 'my_friends_invite.php']
-			];
-			foreach ($tabs as $tab) {
-				$is_active = in_array($current_script, explode(',', $tab[0]));
-				$class = $is_active ? 'ltab' : 'tab';
-				$rc_class = $is_active ? 'rcs' : 'rc';
-				$selected = $is_active ? ' selected' : '';
-				echo "<div class=\"$class\"><b class=\"$rc_class\"><b class=\"{$rc_class}1\"><b></b></b><b class=\"{$rc_class}2\"><b></b></b><b class=\"{$rc_class}3\"></b><b class=\"{$rc_class}4\"></b><b class=\"{$rc_class}5\"></b></b><div class=\"tabContent$selected\"><a href=\"{$tab[2]}\">{$tab[1]}</a></div></div>";
-			}
-			?>
-		</div>
+		<table cellpadding="0" cellspacing="0" border="0">
+			<tbody><tr>
+				<?php
+				$current_script = strtolower(basename($_SERVER['SCRIPT_NAME']));
+				$tabs = [
+					['scripts' => ['index.php'], 'label' => 'Главная', 'href' => 'index.php'],
+					['scripts' => ['channel.php', 'favourites.php', 'friends.php', 'results.php', 'video.php'], 'label' => 'Смотреть&nbsp;видео', 'href' => 'channel.php'],
+					['scripts' => ['upload.php'], 'label' => 'Загружать&nbsp;видео', 'href' => 'upload.php'],
+					['scripts' => ['my_friends_invite.php'], 'label' => 'Пригласить&nbsp;друзей', 'href' => 'my_friends_invite.php'],
+				];
+				$found = false;
+				foreach ($tabs as $t) {
+					if (in_array($current_script, $t['scripts'], true)) {
+						$found = true;
+						break;
+					}
+				}
+				if (!$found) {
+					$current_script = 'index.php';
+				}
+				foreach ($tabs as $idx => $t):
+					$is_active = in_array($current_script, $t['scripts'], true);
+					$ml = ($idx === 0) ? 5 : 0;
+					$tab_style = $is_active
+						? 'background-color: #DDDDDD; margin: 5px 2px 0px ' . $ml . 'px; border-bottom: 1px solid #DDDDDD;'
+						: 'background-color: #BECEEE; margin: 5px 2px 1px ' . $ml . 'px; border-bottom: none;';
+				?>
+				<td>
+					<table style="<?= $tab_style ?>" cellpadding="0" cellspacing="0" border="0">
+						<tbody><tr>
+							<td><img src="/img/box_login_tl.gif" width="5" height="5"></td>
+							<td><img src="/img/pixel.gif" width="1" height="5"></td>
+							<td><img src="/img/box_login_tr.gif" width="5" height="5"></td>
+						</tr>
+						<tr>
+							<td><img src="/img/pixel.gif" width="5" height="1"></td>
+							<td style="padding: 0px 20px 5px 20px; font-size: 13px; font-weight: bold;">
+								<a href="<?= htmlspecialchars($t['href'], ENT_QUOTES, 'UTF-8') ?>"><?= $t['label'] ?></a>
+							</td>
+							<td><img src="/img/pixel.gif" width="5" height="1"></td>
+						</tr>
+					</tbody></table>
+				</td>
+				<?php endforeach; ?>
+			</tr></tbody>
+		</table>
 </td>
 	</tr>
 </table>
@@ -1624,24 +1620,52 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
 <tr valign="bottom">
 		<td>
 		
-		<div id="gNavDiv">
-			<?php
-			$current_script = strtolower(basename($_SERVER['SCRIPT_NAME']));
-			$tabs = [
-				['index.php', 'Главная', 'index.php'],
-				['channel.php,favourites.php,friends.php', 'Смотреть&nbsp;видео', 'channel.php'],
-				['upload.php', 'Загрузить&nbsp;видео', 'upload.php'],
-				['my_friends_invite.php', 'Пригласить&nbsp;друзей', 'my_friends_invite.php']
-			];
-			foreach ($tabs as $tab) {
-				$is_active = in_array($current_script, explode(',', $tab[0]));
-				$class = $is_active ? 'ltab' : 'tab';
-				$rc_class = $is_active ? 'rcs' : 'rc';
-				$selected = $is_active ? ' selected' : '';
-				echo "<div class=\"$class\"><b class=\"$rc_class\"><b class=\"{$rc_class}1\"><b></b></b><b class=\"{$rc_class}2\"><b></b></b><b class=\"{$rc_class}3\"></b><b class=\"{$rc_class}4\"></b><b class=\"{$rc_class}5\"></b></b><div class=\"tabContent$selected\"><a href=\"{$tab[2]}\">{$tab[1]}</a></div></div>";
-			}
-			?>
-		</div>
+		<table cellpadding="0" cellspacing="0" border="0">
+			<tbody><tr>
+				<?php
+				$current_script = strtolower(basename($_SERVER['SCRIPT_NAME']));
+				$tabs = [
+					['scripts' => ['index.php'], 'label' => 'Главная', 'href' => 'index.php'],
+					['scripts' => ['channel.php', 'favourites.php', 'friends.php', 'results.php', 'video.php'], 'label' => 'Смотреть&nbsp;видео', 'href' => 'channel.php'],
+					['scripts' => ['upload.php'], 'label' => 'Загружать&nbsp;видео', 'href' => 'upload.php'],
+					['scripts' => ['my_friends_invite.php'], 'label' => 'Пригласить&nbsp;друзей', 'href' => 'my_friends_invite.php'],
+				];
+				$found = false;
+				foreach ($tabs as $t) {
+					if (in_array($current_script, $t['scripts'], true)) {
+						$found = true;
+						break;
+					}
+				}
+				if (!$found) {
+					$current_script = 'index.php';
+				}
+				foreach ($tabs as $idx => $t):
+					$is_active = in_array($current_script, $t['scripts'], true);
+					$ml = ($idx === 0) ? 5 : 0;
+					$tab_style = $is_active
+						? 'background-color: #DDDDDD; margin: 5px 2px 0px ' . $ml . 'px; border-bottom: 1px solid #DDDDDD;'
+						: 'background-color: #BECEEE; margin: 5px 2px 1px ' . $ml . 'px; border-bottom: none;';
+				?>
+				<td>
+					<table style="<?= $tab_style ?>" cellpadding="0" cellspacing="0" border="0">
+						<tbody><tr>
+							<td><img src="/img/box_login_tl.gif" width="5" height="5"></td>
+							<td><img src="/img/pixel.gif" width="1" height="5"></td>
+							<td><img src="/img/box_login_tr.gif" width="5" height="5"></td>
+						</tr>
+						<tr>
+							<td><img src="/img/pixel.gif" width="5" height="1"></td>
+							<td style="padding: 0px 20px 5px 20px; font-size: 13px; font-weight: bold;">
+								<a href="<?= htmlspecialchars($t['href'], ENT_QUOTES, 'UTF-8') ?>"><?= $t['label'] ?></a>
+							</td>
+							<td><img src="/img/pixel.gif" width="5" height="1"></td>
+						</tr>
+					</tbody></table>
+				</td>
+				<?php endforeach; ?>
+			</tr></tbody>
+		</table>
 </td>
 	</tr>
 </table>

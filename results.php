@@ -6,26 +6,9 @@ require_once __DIR__ . '/duration_helper.php';
 function get_profile_icon($username, $profile_icon_setting = '0') {
     static $icon_cache = [];
     
-    $icon_mode = (string)$profile_icon_setting;
-    $cache_key = $username . '_' . $icon_mode;
+    $cache_key = $username . '_default';
     if (isset($icon_cache[$cache_key])) {
         return $icon_cache[$cache_key];
-    }
-
-    if ($icon_mode === '1') {
-        global $db;
-        try {
-            $stmt = $db->prepare('SELECT profile_icon_custom FROM users WHERE login = ?');
-            $stmt->execute([$username]);
-            $custom = $stmt->fetchColumn();
-            if ($custom && is_string($custom) && $custom !== '') {
-                $icon_cache[$cache_key] = $custom;
-                return $custom;
-            }
-        } catch (Exception $e) {
-        }
-        $icon_cache[$cache_key] = 'img/no_videos_140.jpg';
-        return 'img/no_videos_140.jpg';
     }
 
     global $db;

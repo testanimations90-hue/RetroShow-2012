@@ -1,4 +1,12 @@
 <?php
+// Source - https://stackoverflow.com/a/21429652
+// Posted by Fancy John, modified by community. See post 'Timeline' for change history
+// Retrieved 2026-04-21, License - CC BY-SA 4.0
+
+ini_set('display_errors', '1');
+ini_set('display_startup_errors', '1');
+error_reporting(E_ALL);
+
 include "init.php";
 include "template.php";
 
@@ -170,13 +178,11 @@ if (!$view_user) {
             echo '</form>';
             echo '</td>';
         } else {
+            $friend_thumb = get_profile_icon($friend, '0');
             echo '<td width="130" align="center">';
-            if ((int)$videos_count > 0) {
-                $friend_thumb = get_profile_icon($friend, '0');
-                echo '<a href="channel.php?user='.urlencode($friend).'">';
-                echo '<img src="'.htmlspecialchars($friend_thumb, ENT_QUOTES, 'UTF-8').'" class="moduleEntryThumb" width="120" height="90" border="0" alt="">';
-                echo '</a>';
-            }
+            echo '<a href="channel.php?user='.urlencode($friend).'">';
+            echo '<img src="'.htmlspecialchars($friend_thumb, ENT_QUOTES, 'UTF-8').'" class="moduleEntryThumb" width="120" height="90" border="0" alt="">';
+            echo '</a>';
             echo '</td>';
         }
 

@@ -229,7 +229,6 @@ function video_admin_delete_channel_data(PDO $db, $login) {
     try { channel_moderation_remove_user($login); } catch (Exception $e) {}
     try { $db->prepare('DELETE FROM user_favourites WHERE user = ?')->execute([$login]); } catch (Exception $e) {}
     try { $db->prepare('DELETE FROM user_friends WHERE user = ? OR friend = ?')->execute([$login, $login]); } catch (Exception $e) {}
-    try { $db->prepare('DELETE FROM profile_comments WHERE profile_user = ? OR user = ?')->execute([$login, $login]); } catch (Exception $e) {}
     try { $db->prepare('DELETE FROM comments WHERE user = ?')->execute([$login]); } catch (Exception $e) {}
     try { $db->prepare('DELETE FROM ratings WHERE user = ?')->execute([$login]); } catch (Exception $e) {}
     try { $db->prepare('DELETE FROM mail_inbox WHERE to_user = ? OR from_user = ?')->execute([$login, $login]); } catch (Exception $e) {}
@@ -1251,24 +1250,52 @@ html, body {
 	<tr valign="bottom">
 		<td>
 		
-		<div id="gNavDiv">
-			<?php
-			$current_script = strtolower(basename($_SERVER['SCRIPT_NAME']));
-			$tabs = [
-				['index.php', 'Главная', 'index.php'],
-				['channel.php,favourites.php,friends.php,video.php', 'Смотреть&nbsp;видео', 'channel.php'],
-				['upload.php', 'Загрузить&nbsp;видео', 'upload.php'],
-				['my_friends_invite.php', 'Пригласить&nbsp;друзей', 'my_friends_invite.php']
-			];
-			foreach ($tabs as $tab) {
-				$is_active = in_array($current_script, explode(',', $tab[0]));
-				$class = $is_active ? 'ltab' : 'tab';
-				$rc_class = $is_active ? 'rcs' : 'rc';
-				$selected = $is_active ? ' selected' : '';
-				echo "<div class=\"$class\"><b class=\"$rc_class\"><b class=\"{$rc_class}1\"><b></b></b><b class=\"{$rc_class}2\"><b></b></b><b class=\"{$rc_class}3\"></b><b class=\"{$rc_class}4\"></b><b class=\"{$rc_class}5\"></b></b><div class=\"tabContent$selected\"><a href=\"{$tab[2]}\">{$tab[1]}</a></div></div>";
-			}
-			?>
-		</div>
+		<table cellpadding="0" cellspacing="0" border="0">
+			<tbody><tr>
+				<?php
+				$current_script = strtolower(basename($_SERVER['SCRIPT_NAME']));
+				$tabs = [
+					['scripts' => ['index.php'], 'label' => 'Главная', 'href' => 'index.php'],
+					['scripts' => ['channel.php', 'favourites.php', 'friends.php', 'results.php', 'video.php'], 'label' => 'Смотреть&nbsp;видео', 'href' => 'channel.php'],
+					['scripts' => ['upload.php'], 'label' => 'Загружать&nbsp;видео', 'href' => 'upload.php'],
+					['scripts' => ['my_friends_invite.php'], 'label' => 'Пригласить&nbsp;друзей', 'href' => 'my_friends_invite.php'],
+				];
+				$found = false;
+				foreach ($tabs as $t) {
+					if (in_array($current_script, $t['scripts'], true)) {
+						$found = true;
+						break;
+					}
+				}
+				if (!$found) {
+					$current_script = 'index.php';
+				}
+				foreach ($tabs as $idx => $t):
+					$is_active = in_array($current_script, $t['scripts'], true);
+					$ml = ($idx === 0) ? 5 : 0;
+					$tab_style = $is_active
+						? 'background-color: #DDDDDD; margin: 5px 2px 0px ' . $ml . 'px; border-bottom: 1px solid #DDDDDD;'
+						: 'background-color: #BECEEE; margin: 5px 2px 1px ' . $ml . 'px; border-bottom: none;';
+				?>
+				<td>
+					<table style="<?= $tab_style ?>" cellpadding="0" cellspacing="0" border="0">
+						<tbody><tr>
+							<td><img src="/img/box_login_tl.gif" width="5" height="5"></td>
+							<td><img src="/img/pixel.gif" width="1" height="5"></td>
+							<td><img src="/img/box_login_tr.gif" width="5" height="5"></td>
+						</tr>
+						<tr>
+							<td><img src="/img/pixel.gif" width="5" height="1"></td>
+							<td style="padding: 0px 20px 5px 20px; font-size: 13px; font-weight: bold;">
+								<a href="<?= htmlspecialchars($t['href'], ENT_QUOTES, 'UTF-8') ?>"><?= $t['label'] ?></a>
+							</td>
+							<td><img src="/img/pixel.gif" width="5" height="1"></td>
+						</tr>
+					</tbody></table>
+				</td>
+				<?php endforeach; ?>
+			</tr></tbody>
+		</table>
 		</td>
 	</tr>
 

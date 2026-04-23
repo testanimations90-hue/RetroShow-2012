@@ -164,7 +164,6 @@ function admin_delete_channel(PDO $db, $login) {
     try { $db->prepare('DELETE FROM users WHERE login = ?')->execute([$login]); } catch (Exception $e) {}
     try { $db->prepare('DELETE FROM user_favourites WHERE user = ?')->execute([$login]); } catch (Exception $e) {}
     try { $db->prepare('DELETE FROM user_friends WHERE user = ? OR friend = ?')->execute([$login, $login]); } catch (Exception $e) {}
-    try { $db->prepare('DELETE FROM profile_comments WHERE profile_user = ? OR user = ?')->execute([$login, $login]); } catch (Exception $e) {}
     try { $db->prepare('DELETE FROM comments WHERE user = ?')->execute([$login]); } catch (Exception $e) {}
     try { $db->prepare('DELETE FROM ratings WHERE user = ?')->execute([$login]); } catch (Exception $e) {}
     try { $db->prepare('DELETE FROM mail_inbox WHERE to_user = ? OR from_user = ?')->execute([$login, $login]); } catch (Exception $e) {}
@@ -188,12 +187,6 @@ function admin_human_log_line(array $row) {
         $author = str_replace(' ', '+', $author);
         $title = (string)($row['video_title'] ?? '');
         return 'Комментарий к видео: аккаунт "' . $author . '", видео "' . $title . '", IP ' . $ip;
-    }
-    if ($event === 'comment_profile') {
-        $author = (string)($row['author'] ?? $user);
-        $author = str_replace(' ', '+', $author);
-        $target = (string)($row['profile_user'] ?? '');
-        return 'Комментарий на канал: аккаунт "' . $author . '" на канал "' . $target . '", IP ' . $ip;
     }
     if ($event === 'blocked_ip') {
         return 'Заблокированный вход по IP: ' . $ip . '; UA: ' . $ua;
@@ -424,9 +417,7 @@ try {
 } catch (Exception $e) {
 }
 try {
-    $c_vid = (int)$db->query('SELECT COUNT(*) FROM comments')->fetchColumn();
-    $c_prof = (int)$db->query('SELECT COUNT(*) FROM profile_comments')->fetchColumn();
-    $stats_comments = $c_vid + $c_prof;
+    $stats_comments = (int)$db->query('SELECT COUNT(*) FROM comments')->fetchColumn();
 } catch (Exception $e) {
 }
 try {
@@ -520,14 +511,8 @@ showHeader("Админ панель");
       <td width="120" style="font-size:13px; color:#333; padding-bottom:8px; vertical-align:top;"><b>Адрес:</b></td>
       <td style="font-size:13px; color:#222; padding-bottom:8px;" colspan="4">
         <input type="text" name="field_processing_url" id="processingUrl" value="<?=htmlspecialchars($processing_settings['url'])?>" style="width:320px;">
-        <br>
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td style="font-size:13px; color:#222; padding-bottom:8px;" colspan="4">
+        <br>    
         <span class="smallText">Для использования внешнего сервера, запустите его при помощи скрипта по пути <b>converter/server.py</b> при помощи интерпретатора Python.</span>
-        <br>
         <br>
     </tr>
     <tr>

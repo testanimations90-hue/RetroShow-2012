@@ -14,7 +14,7 @@ $pw_error = '';
 $pw_success = false;
 
 try {
-    $stmt = $db->prepare('SELECT email, about_me, gender, birthday_mon, birthday_day, birthday_yr, country, name, last_n, relationship, website, profile_icon, profile_comm, profile_bull, player_type, home_block_type, header_logo, hometown, city FROM users WHERE login = ?');
+    $stmt = $db->prepare('SELECT email, about_me, gender, birthday_mon, birthday_day, birthday_yr, country, name, last_n, relationship, website, profile_bull, player_type, home_block_type, header_logo, hometown, city FROM users WHERE login = ?');
     $stmt->execute([$user]);
     $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
@@ -37,8 +37,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!empty($website) && !preg_match('/^https?:\/\//', $website)) {
         $website = 'http://' . $website;
     }
-    $profile_icon = $_POST['profile_icon'] ?? '0';
-    $profile_comm = $_POST['profile_comm'] ?? '1';
     $profile_bull = $_POST['profile_bull'] ?? '1';
     $player_type = $_POST['player_type'] ?? 'auto';
     $home_block_type = $_POST['home_block_type'] ?? 'recent_added';
@@ -54,8 +52,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (mb_strlen($about_me) > 500) $about_me = mb_substr($about_me, 0, 500);
     
-    $stmt = $db->prepare('UPDATE users SET email = ?, about_me = ?, gender = ?, birthday_mon = ?, birthday_day = ?, birthday_yr = ?, country = ?, name = ?, last_n = ?, relationship = ?, website = ?, profile_icon = ?, profile_comm = ?, profile_bull = ?, player_type = ?, home_block_type = ?, header_logo = ?, hometown = ?, city = ? WHERE login = ?');
-    if ($stmt->execute([$email, $about_me, $gender, $birthday_mon, $birthday_day, $birthday_yr, $country, $name, $last_n, $relationship, $website, $profile_icon, $profile_comm, $profile_bull, $player_type, $home_block_type, $header_logo, $hometown, $city, $user])) {
+    $stmt = $db->prepare('UPDATE users SET email = ?, about_me = ?, gender = ?, birthday_mon = ?, birthday_day = ?, birthday_yr = ?, country = ?, name = ?, last_n = ?, relationship = ?, website = ?, profile_bull = ?, player_type = ?, home_block_type = ?, header_logo = ?, hometown = ?, city = ? WHERE login = ?');
+    if ($stmt->execute([$email, $about_me, $gender, $birthday_mon, $birthday_day, $birthday_yr, $country, $name, $last_n, $relationship, $website, $profile_bull, $player_type, $home_block_type, $header_logo, $hometown, $city, $user])) {
         $success = true;
 		
         $user_data['email'] = $email;
@@ -69,8 +67,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user_data['last_n'] = $last_n;
         $user_data['relationship'] = $relationship;
         $user_data['website'] = $website;
-        $user_data['profile_icon'] = $profile_icon;
-        $user_data['profile_comm'] = $profile_comm;
         $user_data['profile_bull'] = $profile_bull;
         $user_data['player_type'] = $player_type;
         $user_data['home_block_type'] = $home_block_type;
@@ -257,25 +253,6 @@ showHeader('Настройки аккаунта');
     <input type="text" size="20" maxlength="500" name="website" value="<?=htmlspecialchars($user_data['website'] ?? '')?>">
   </td>
 </tr>
-<tr>
-  <td width="120" style="font-size:13px; color:#333; padding-bottom:8px; vertical-align:top;"><b>Иконка профиля:</b></td>
-  <td style="font-size:13px; color:#222; padding-bottom:8px;" colspan="4">
-    <input type="radio" name="profile_icon" value="0" <?= ($user_data['profile_icon'] ?? '0') == '0' ? 'checked' : '' ?>> 
-    <label for="1">Использовать последнее загруженное видео как фото профиля.</label><br>
-    <input type="radio" name="profile_icon" value="1" <?= ($user_data['profile_icon'] ?? '0') == '1' ? 'checked' : '' ?>>
-    <label for="2">Я выберу фото профиля из "Мои видео".</label><br>
-  </td>
-</tr>
-<tr>
-  <td width="120" style="font-size:13px; color:#333; padding-bottom:8px; vertical-align:top;"><b>Комментарии профиля:</b></td>
-  <td style="font-size:13px; color:#222; padding-bottom:8px;" colspan="4">
-    <input type="radio" name="profile_comm" value="1" <?= ($user_data['profile_comm'] ?? '1') == '1' ? 'checked' : '' ?>> 
-    <label for="1">Разрешить комментарии к профилю.</label><br>
-    <input type="radio" name="profile_comm" value="2" <?= ($user_data['profile_comm'] ?? '1') == '2' ? 'checked' : '' ?>>
-    <label for="2">Не разрешать комментарии к профилю.</label><br>
-  </td>
-</tr>
-
 </table>
 </div>
 </div>
