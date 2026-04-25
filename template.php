@@ -31,7 +31,11 @@ function showHeader($title = "RetroShow") {
 
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<?php if ($title === "Главная"): ?>
+<title>RetroShow - Загружайте и делитесь видео по всему миру!</title>
+<?php else: ?>
 <title><?= htmlspecialchars($title) ?> - RetroShow</title>
+<?php endif; ?>
 		
 		<script language="javascript" type="text/javascript">
 		onLoadFunctionList = new Array();
@@ -208,7 +212,7 @@ html, body {
 				$tabs = [
 					['scripts' => ['index.php'], 'label' => 'Главная', 'href' => 'index.php'],
 					['scripts' => ['channel.php', 'favourites.php', 'friends.php', 'results.php', 'video.php'], 'label' => 'Смотреть&nbsp;видео', 'href' => 'channel.php'],
-					['scripts' => ['upload.php'], 'label' => 'Загружать&nbsp;видео', 'href' => 'upload.php'],
+					['scripts' => ['upload.php'], 'label' => 'Загрузить&nbsp;видео', 'href' => 'upload.php'],
 					['scripts' => ['my_friends_invite.php'], 'label' => 'Пригласить&nbsp;друзей', 'href' => 'my_friends_invite.php'],
 				];
 				$found = false;

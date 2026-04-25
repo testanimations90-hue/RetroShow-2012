@@ -1,92 +1,9 @@
 <?php 
 include("init.php");
-
 require_once 'duration_helper.php';
 
 function get_video_duration($file, $id, $public_id = '') {
     return get_video_duration_fast($file, $id, $public_id);
-}
-
-function related_shuffle_within_buckets(array $rows, callable $bucketKey, bool $desc = true): array {
-    if ($rows === []) {
-        return [];
-    }
-    $buckets = [];
-    foreach ($rows as $row) {
-        $k = $bucketKey($row);
-        $buckets[$k][] = $row;
-    }
-    if ($desc) {
-        krsort($buckets, SORT_NUMERIC);
-    } else {
-        ksort($buckets, SORT_NUMERIC);
-    }
-    $out = [];
-    foreach ($buckets as $bucket) {
-        shuffle($bucket);
-        foreach ($bucket as $r) {
-            $out[] = $r;
-        }
-    }
-    return $out;
-}
-
-function related_reorder_spread_authors(array $items): array {
-    $n = count($items);
-    if ($n < 2) {
-        return $items;
-    }
-    $remaining = array_values($items);
-    $out = [];
-    $last = null;
-    $run = 0;
-    while ($remaining !== []) {
-        $pos = count($out);
-        $t = $n > 1 ? $pos / ($n - 1) : 1.0;
-        $want_spread = (1.0 - $t) ** 1.2;
-
-        $has_other = false;
-        if ($last !== null && $last !== '') {
-            foreach ($remaining as $r) {
-                $a = isset($r['user']) ? (string)$r['user'] : '';
-                if ($a === '' || $a !== $last) {
-                    $has_other = true;
-                    break;
-                }
-            }
-        }
-
-        $picked_i = null;
-        foreach ($remaining as $i => $row) {
-            $auth = isset($row['user']) ? (string)$row['user'] : '';
-            $same = ($last !== null && $auth !== '' && $auth === $last);
-            if ($same && $has_other) {
-                if ($run >= 2) {
-                    continue;
-                }
-                if ($run >= 1 && $want_spread > 0.08) {
-                    continue;
-                }
-            }
-            $picked_i = $i;
-            break;
-        }
-        if ($picked_i === null) {
-            $picked_i = 0;
-        }
-        $row = $remaining[$picked_i];
-        array_splice($remaining, $picked_i, 1);
-        $out[] = $row;
-        $auth = isset($row['user']) ? (string)$row['user'] : '';
-        if ($auth !== '' && $last !== null && $auth === $last) {
-            $run++;
-        } else {
-            $run = $auth !== '' ? 1 : 0;
-        }
-        $last = $auth !== '' ? $auth : null;
-    }
-
-    return $out;
 }
 
 function time_ago($time) {
@@ -540,19 +457,82 @@ if (!$is_private) {
     } catch (Exception $e) {}
 }
 
+function related_shuffle_within_buckets(array $rows, callable $bucketKey, bool $desc = true): array {
+    if ($rows === []) return [];
+    $buckets = [];
+    foreach ($rows as $row) {
+        $k = $bucketKey($row);
+        $buckets[$k][] = $row;
+    }
+    if ($desc) krsort($buckets, SORT_NUMERIC);
+    else ksort($buckets, SORT_NUMERIC);
+    $out = [];
+    foreach ($buckets as $bucket) {
+        shuffle($bucket);
+        foreach ($bucket as $r) $out[] = $r;
+    }
+    return $out;
+}
+
+function related_reorder_spread_authors(array $items): array {
+    $n = count($items);
+    if ($n < 2) return $items;
+    $remaining = array_values($items);
+    $out = [];
+    $last = null;
+    $run = 0;
+    while ($remaining !== []) {
+        $pos = count($out);
+        $t = $n > 1 ? $pos / ($n - 1) : 1.0;
+        $want_spread = (1.0 - $t) ** 1.2;
+
+        $has_other = false;
+        if ($last !== null && $last !== '') {
+            foreach ($remaining as $r) {
+                $a = isset($r['user']) ? (string)$r['user'] : '';
+                if ($a === '' || $a !== $last) { $has_other = true; break; }
+            }
+        }
+
+        $picked_i = null;
+        foreach ($remaining as $i => $row) {
+            $auth = isset($row['user']) ? (string)$row['user'] : '';
+            $same = ($last !== null && $auth !== '' && $auth === $last);
+            if ($same && $has_other) {
+                if ($run >= 2) continue;
+                if ($run >= 1 && $want_spread > 0.08) continue;
+            }
+            $picked_i = $i;
+            break;
+        }
+        if ($picked_i === null) $picked_i = 0;
+        $row = $remaining[$picked_i];
+        array_splice($remaining, $picked_i, 1);
+        $out[] = $row;
+        $auth = isset($row['user']) ? (string)$row['user'] : '';
+        if ($auth !== '' && $last !== null && $auth === $last) $run++;
+        else $run = $auth !== '' ? 1 : 0;
+        $last = $auth !== '' ? $auth : null;
+    }
+    return $out;
+}
+
+$recommended = [];
+$related_tag_match_total = 0;
 try {
     $current_tags = isset($video['tags']) ? trim((string)$video['tags']) : '';
     $tag_words = [];
     if ($current_tags !== '') {
         $tag_words = preg_split('/\s+/', mb_strtolower($current_tags, 'UTF-8'), -1, PREG_SPLIT_NO_EMPTY);
-        $tag_words = array_values(array_unique($tag_words));
+        $tag_words = is_array($tag_words) ? array_values(array_unique($tag_words)) : [];
     }
 
-    $stmtRec = $db->prepare("SELECT id, public_id, title, description, file, preview, user, tags, views
-                             FROM videos
-                             WHERE id != ? AND (private = 0 OR private IS NULL)");
-    $stmtRec->execute([$id]);
-    $candidates = $stmtRec->fetchAll(PDO::FETCH_ASSOC);
+    $sqlRec = "SELECT id, public_id, title, description, file, preview, user, tags, views
+               FROM videos
+               WHERE id != ? AND (private = 0 OR private IS NULL) AND " . visible_video_sql_condition('videos', 'user');
+    $stmtRec = $db->prepare($sqlRec);
+    $stmtRec->execute([(int)$id]);
+    $candidates = $stmtRec->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
     $tier_strong = [];
     $tier_same_channel = [];
@@ -562,10 +542,8 @@ try {
     $cur_tokens = $tag_words;
     if ($cur_title !== '') {
         $tw = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($cur_title, 'UTF-8'), -1, PREG_SPLIT_NO_EMPTY);
-        foreach ($tw as $w) {
-            if (mb_strlen($w, 'UTF-8') >= 2) {
-                $cur_tokens[] = $w;
-            }
+        if (is_array($tw)) {
+            foreach ($tw as $w) if (mb_strlen($w, 'UTF-8') >= 2) $cur_tokens[] = $w;
         }
         $cur_tokens = array_values(array_unique($cur_tokens));
     }
@@ -576,42 +554,31 @@ try {
             $score += 5;
         }
         $row_tags = isset($row['tags']) ? trim((string)$row['tags']) : '';
-        if (!empty($tag_words) && $row_tags !== '') {
+        if ($tag_words !== [] && $row_tags !== '') {
             $ltags = mb_strtolower($row_tags, 'UTF-8');
             foreach ($tag_words as $w) {
-                if ($w === '') {
-                    continue;
-                }
-                if (mb_stripos($ltags, $w, 0, 'UTF-8') !== false) {
-                    $score++;
-                }
+                if ($w !== '' && mb_stripos($ltags, $w, 0, 'UTF-8') !== false) $score++;
             }
         }
         if ($score > 0) {
-            $row['_score'] = $score + (mt_rand(0, 10) / 100.0);
+            $row['_score'] = $score + (mt_rand(0, 80) / 100.0);
             $tier_strong[] = $row;
+
         } elseif ($cur_user !== '' && isset($row['user']) && (string)$row['user'] === $cur_user) {
             $row['_pop'] = (int)($row['views'] ?? 0);
             $tier_same_channel[] = $row;
+
         } else {
-            $row['_pop'] = (int)($row['views'] ?? 0);
-            $row['_rnd'] = mt_rand(0, 9999);
             $weak = 0;
             if ($cur_tokens !== []) {
-                $blob = mb_strtolower(
-                    trim((string)($row['tags'] ?? '') . ' ' . trim((string)($row['title'] ?? ''))),
-                    'UTF-8'
-                );
+                $blob = mb_strtolower(trim((string)($row['tags'] ?? '') . ' ' . trim((string)($row['title'] ?? ''))), 'UTF-8');
                 foreach ($cur_tokens as $tok) {
-                    if ($tok === '' || mb_strlen($tok, 'UTF-8') < 2) {
-                        continue;
-                    }
-                    if (mb_stripos($blob, $tok, 0, 'UTF-8') !== false) {
-                        $weak++;
-                    }
+                    if ($tok === '' || mb_strlen($tok, 'UTF-8') < 2) continue;
+                    if (mb_stripos($blob, $tok, 0, 'UTF-8') !== false) $weak++;
                 }
             }
-            $row['_weak'] = $weak;
+
+            $row['_weak'] = $weak + (mt_rand(0, 3) / 10.0);
             $tier_rest[] = $row;
         }
     }
@@ -627,99 +594,107 @@ try {
     }, true);
 
     $related_tag_match_total = count($tier_strong) + count($tier_same_channel);
-    if ($related_tag_match_total < 1) {
-        $related_tag_match_total = max(0, count($candidates));
-    }
+    if ($related_tag_match_total < 1) $related_tag_match_total = max(0, count($candidates));
 
-    $queues = [$tier_strong, $tier_same_channel, $tier_rest];
+    $qStrong = $tier_strong;
+    $qSame = $tier_same_channel;
+    $qRest = $tier_rest;
     $used_ids = [];
-    $RELATED_SOFT_CAP_PER_AUTHOR = 8;
     $author_take = [];
-    foreach ($queues as $queue) {
-        foreach ($queue as $row) {
-            if (count($recommended) >= $RELATED_RECOMMEND_MAX) {
-                break 2;
-            }
-            $vid = (int)($row['id'] ?? 0);
-            if ($vid <= 0 || isset($used_ids[$vid])) {
-                continue;
-            }
-            $author = isset($row['user']) ? (string)$row['user'] : '';
-            $akey = $author !== '' ? $author : '__';
-            if (($author_take[$akey] ?? 0) >= $RELATED_SOFT_CAP_PER_AUTHOR) {
-                continue;
-            }
-            $copy = $row;
-            unset($copy['_score'], $copy['_pop'], $copy['_rnd'], $copy['_weak']);
-            $recommended[] = $copy;
-            $used_ids[$vid] = true;
-            $author_take[$akey] = ($author_take[$akey] ?? 0) + 1;
-        }
+    $RELATED_SOFT_CAP_PER_AUTHOR = 8;
+
+    $topStrongTarget = min($RELATED_RECOMMEND_MAX, max(8, (int)round($RELATED_RECOMMEND_MAX * 0.60)));
+    $topGuard = 0;
+    while (count($recommended) < $topStrongTarget && $qStrong !== [] && $topGuard < 800) {
+        $topGuard++;
+        $row = array_shift($qStrong);
+        if (!is_array($row)) continue;
+        $vid = (int)($row['id'] ?? 0);
+        if ($vid <= 0 || isset($used_ids[$vid])) continue;
+        $author = isset($row['user']) ? (string)$row['user'] : '';
+        $akey = $author !== '' ? $author : '__';
+        if (($author_take[$akey] ?? 0) >= $RELATED_SOFT_CAP_PER_AUTHOR) continue;
+        $copy = $row;
+        unset($copy['_score'], $copy['_pop'], $copy['_weak']);
+        $recommended[] = $copy;
+        $used_ids[$vid] = true;
+        $author_take[$akey] = ($author_take[$akey] ?? 0) + 1;
     }
 
-    if (count($recommended) < $RELATED_RECOMMEND_MAX) {
-        foreach ($queues as $queue) {
-            foreach ($queue as $row) {
-                if (count($recommended) >= $RELATED_RECOMMEND_MAX) {
-                    break 2;
-                }
-                $vid = (int)($row['id'] ?? 0);
-                if ($vid <= 0 || isset($used_ids[$vid])) {
-                    continue;
-                }
-                $copy = $row;
-                unset($copy['_score'], $copy['_pop'], $copy['_rnd'], $copy['_weak']);
-                $recommended[] = $copy;
-                $used_ids[$vid] = true;
-            }
-        }
+    $mixGuard = 0;
+    while (count($recommended) < $RELATED_RECOMMEND_MAX && $mixGuard < 2000) {
+        $mixGuard++;
+        $hasStrong = ($qStrong !== []);
+        $hasSame = ($qSame !== []);
+        $hasRest = ($qRest !== []);
+        if (!$hasStrong && !$hasSame && !$hasRest) break;
+
+        $r = mt_rand(1, 100);
+        if ($hasStrong && $r <= 50) $bucket = 'strong';
+        elseif ($hasSame && $r <= 80) $bucket = 'same';
+        else $bucket = 'rest';
+
+        if ($bucket === 'strong' && !$hasStrong) $bucket = $hasSame ? 'same' : 'rest';
+        if ($bucket === 'same' && !$hasSame) $bucket = $hasStrong ? 'strong' : 'rest';
+        if ($bucket === 'rest' && !$hasRest) $bucket = $hasStrong ? 'strong' : 'same';
+
+        if ($bucket === 'strong') $row = array_shift($qStrong);
+        elseif ($bucket === 'same') $row = array_shift($qSame);
+        else $row = array_shift($qRest);
+
+        if (!is_array($row)) continue;
+        $vid = (int)($row['id'] ?? 0);
+        if ($vid <= 0 || isset($used_ids[$vid])) continue;
+
+        $author = isset($row['user']) ? (string)$row['user'] : '';
+        $akey = $author !== '' ? $author : '__';
+        if (($author_take[$akey] ?? 0) >= $RELATED_SOFT_CAP_PER_AUTHOR) continue;
+
+        $copy = $row;
+        unset($copy['_score'], $copy['_pop'], $copy['_weak']);
+        $recommended[] = $copy;
+        $used_ids[$vid] = true;
+        $author_take[$akey] = ($author_take[$akey] ?? 0) + 1;
     }
 
     if (count($recommended) < $RELATED_RECOMMEND_MAX && $candidates !== []) {
         $pad = [];
-        foreach ($queues as $queue) {
-            foreach ($queue as $row) {
-                $pad[] = $row;
-            }
-        }
-        if ($pad === []) {
-            $pad = $candidates;
-        }
+        foreach ([$qStrong, $qSame, $qRest] as $queue) foreach ($queue as $row) $pad[] = $row;
+        if ($pad === []) $pad = $candidates;
         shuffle($pad);
         $pn = count($pad);
         $pi = 0;
-        while (count($recommended) < $RELATED_RECOMMEND_MAX && $pn > 0) {
+        $guard = 0;
+        while (count($recommended) < $RELATED_RECOMMEND_MAX && $pn > 0 && $guard < ($pn * 3)) {
+            $guard++;
             $row = $pad[$pi % $pn];
-            $copy = $row;
-            unset($copy['_score'], $copy['_pop'], $copy['_rnd'], $copy['_weak']);
-            $recommended[] = $copy;
+            $vid = (int)($row['id'] ?? 0);
+            if ($vid > 0 && !isset($used_ids[$vid])) {
+                $copy = $row;
+                unset($copy['_score'], $copy['_pop'], $copy['_weak']);
+                $recommended[] = $copy;
+                $used_ids[$vid] = true;
+            }
             $pi++;
         }
     }
 
-    if (count($recommended) > $RELATED_RECOMMEND_MAX) {
-        $recommended = array_slice($recommended, 0, $RELATED_RECOMMEND_MAX);
-    }
-
-    if (count($recommended) > 1) {
-        $recommended = related_reorder_spread_authors($recommended);
-    }
-
-    if ($related_tag_match_total < 1) {
-        $related_tag_match_total = count($recommended);
-    }
-
+    if (count($recommended) > $RELATED_RECOMMEND_MAX) $recommended = array_slice($recommended, 0, $RELATED_RECOMMEND_MAX);
+    if (count($recommended) > 1) $recommended = related_reorder_spread_authors($recommended);
+    if ($related_tag_match_total < 1) $related_tag_match_total = count($recommended);
 } catch (Exception $e) {
     $recommended = [];
     $related_tag_match_total = 0;
     try {
         $st = $db->prepare("SELECT id, public_id, title, description, file, preview, user, tags, views
-            FROM videos WHERE id != ? AND (private = 0 OR private IS NULL) ORDER BY RANDOM() LIMIT " . (int)$RELATED_RECOMMEND_MAX);
-        $st->execute([$id]);
+            FROM videos
+            WHERE id != ? AND (private = 0 OR private IS NULL) AND " . visible_video_sql_condition('videos', 'user') . "
+            ORDER BY RANDOM()
+            LIMIT " . (int)$RELATED_RECOMMEND_MAX);
+        $st->execute([(int)$id]);
         $recommended = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
         $related_tag_match_total = count($recommended);
-    } catch (Exception $e2) {
-    }
+    } catch (Exception $e2) {}
 }
 
 $comment_error = '';
@@ -1257,7 +1232,7 @@ html, body {
 				$tabs = [
 					['scripts' => ['index.php'], 'label' => 'Главная', 'href' => 'index.php'],
 					['scripts' => ['channel.php', 'favourites.php', 'friends.php', 'results.php', 'video.php'], 'label' => 'Смотреть&nbsp;видео', 'href' => 'channel.php'],
-					['scripts' => ['upload.php'], 'label' => 'Загружать&nbsp;видео', 'href' => 'upload.php'],
+					['scripts' => ['upload.php'], 'label' => 'Загрузить&nbsp;видео', 'href' => 'upload.php'],
 					['scripts' => ['my_friends_invite.php'], 'label' => 'Пригласить&nbsp;друзей', 'href' => 'my_friends_invite.php'],
 				];
 				$found = false;
@@ -1999,7 +1974,44 @@ if (window.attachEvent) {
 	</b> <div class="content"><span class="headerTitleLite">Посмотрите больше видео</span></div>
 	</div>  
     <?php
-    $rec_list = array_values($recommended);
+    $curr_id = (int)($video['id'] ?? 0);
+    $curr_pub = trim((string)($video['public_id'] ?? ''));
+    $curr_file = strtolower(trim((string)($video['file'] ?? '')));
+    $curr_user = strtolower(trim((string)($video['user'] ?? '')));
+    $curr_title = strtolower(trim((string)($video['title'] ?? '')));
+
+    $rec_seen = [];
+    $rec_unique = [];
+    foreach ((array)$recommended as $rec_item) {
+        if (!is_array($rec_item)) continue;
+        $rid = (int)($rec_item['id'] ?? 0);
+        $rpub = trim((string)($rec_item['public_id'] ?? ''));
+        $rfile = strtolower(trim((string)($rec_item['file'] ?? '')));
+        $ruser = strtolower(trim((string)($rec_item['user'] ?? '')));
+        $rtitle = strtolower(trim((string)($rec_item['title'] ?? '')));
+        if ($rid > 0) $rkey = 'id:' . $rid;
+        elseif ($rpub !== '') $rkey = 'pub:' . $rpub;
+        else $rkey = 'fp:' . $rfile . '|' . $ruser . '|' . $rtitle;
+        $is_current_video = false;
+        if ($curr_id > 0 && $rid > 0 && $curr_id === $rid) $is_current_video = true;
+        if (!$is_current_video && $curr_pub !== '' && $rpub !== '' && $curr_pub === $rpub) $is_current_video = true;
+        if (
+            !$is_current_video &&
+            $curr_file !== '' && $rfile !== '' &&
+            $curr_file === $rfile &&
+            $curr_user === $ruser &&
+            $curr_title === $rtitle
+        ) {
+            $is_current_video = true;
+        }
+        if ($is_current_video) continue;
+
+        if (isset($rec_seen[$rkey])) continue;
+        $rec_seen[$rkey] = true;
+        $rec_unique[] = $rec_item;
+        if (count($rec_unique) >= 20) break;
+    }
+    $rec_list = array_values($rec_unique);
     $rec_shown = count($rec_list);
     $more_href = 'channel.php';
     if (!empty($video['tags'])) {

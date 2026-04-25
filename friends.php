@@ -1,12 +1,4 @@
 <?php
-// Source - https://stackoverflow.com/a/21429652
-// Posted by Fancy John, modified by community. See post 'Timeline' for change history
-// Retrieved 2026-04-21, License - CC BY-SA 4.0
-
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
-error_reporting(E_ALL);
-
 include "init.php";
 include "template.php";
 
@@ -152,9 +144,15 @@ if (!$view_user) {
         $videos_count = 0;
         $favs_count = 0;
         $fr_count = 0;
+        $friend_has_avatar = false;
+        $friend_avatar_thumb = '';
         $stmt = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0");
         $stmt->execute([$friend]);
         $videos_count = (int)$stmt->fetchColumn();
+        $friend_avatar_thumb = get_profile_icon($friend, '0');
+        if ($friend_avatar_thumb !== '' && $friend_avatar_thumb !== 'img/no_videos_140.jpg') {
+            $friend_has_avatar = true;
+        }
         try {
             $stmtFav2 = $db->prepare("SELECT COUNT(*) FROM user_favourites WHERE user = ?");
             $stmtFav2->execute([$friend]);
@@ -169,7 +167,18 @@ if (!$view_user) {
         echo '<table width="100%" cellpadding="0" cellspacing="0" border="0">';
         echo '<tr valign="top">';
 
-        if ($is_own) {
+        if ($is_own && $friend_has_avatar) {
+            echo '<td align="center" width="150">';
+            echo '<a href="channel.php?user='.urlencode($friend).'">';
+            echo '<img src="'.htmlspecialchars($friend_avatar_thumb, ENT_QUOTES, 'UTF-8').'" class="moduleEntryThumb" width="120" height="90" border="0" alt="">';
+            echo '</a>';
+            echo '<form method="post" action="friends.php?user='.urlencode($view_user).'" style="margin:0;">';
+            echo '<input type="hidden" name="remove_friend" value="1">';
+            echo '<input type="hidden" name="friend" value="'.htmlspecialchars($friend, ENT_QUOTES, 'UTF-8').'">';
+            echo '<input type="submit" value="Удалить из друзей" style="margin-top:5px;">';
+            echo '</form>';
+            echo '</td>';
+        } elseif ($is_own) {
             echo '<td align="center" width="150">';
             echo '<form method="post" action="friends.php?user='.urlencode($view_user).'" style="margin:0;">';
             echo '<input type="hidden" name="remove_friend" value="1">';
@@ -189,6 +198,9 @@ if (!$view_user) {
         echo '<td width="100%">';
         echo '<div class="moduleEntryTitle">';
         echo '<a href="channel.php?user='.urlencode($friend).'">'.htmlspecialchars($friend, ENT_QUOTES, 'UTF-8').'</a>';
+        if ($is_own) {
+            echo '<span style="color:#777;font-size:11px;"> (Друзья)</span>';
+        }
         echo '</div>';
 
         echo '<div class="moduleEntryDescription">';

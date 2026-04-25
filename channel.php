@@ -32,7 +32,6 @@ function rus_date($time) {
     return "$d $m $y";
 }
 
-/** videos.time may be Unix int or string from upload (d.m.Y, H:i). */
 function channel_video_rus_date_from_db($timeVal): string {
     if ($timeVal === null || $timeVal === '') {
         return rus_date(time());
@@ -387,7 +386,7 @@ if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
                         <td width="120" align="right"><span class="label">Имя пользователя:</span></td>
                         <td><?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?></td>
                     </tr>
-                    <!-- Personal Information: -->
+                    
                     <?php if ($name_text !== ''): ?>
                     <tr>
                         <td align="right"><span class="label">Имя:</span></td>
@@ -415,7 +414,7 @@ if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
                     <tr>
                         <td colspan="2">&nbsp;</td>
                     </tr>
-                    <!-- Location Information -->
+
                     <?php if (!empty($user_data['hometown'])): ?>
                     <tr>
                         <td align="right"><span class="label">Родной город:</span></td>
@@ -437,7 +436,7 @@ if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
                     <tr>
                         <td colspan="2">&nbsp;</td>
                     </tr>
-                    <!-- Random Information -->
+
                     <tr>
                         <td align="right"><span class="label">Последний вход:</span></td>
                         <td><?= htmlspecialchars(ago_ru($last_login_time), ENT_QUOTES, 'UTF-8') ?></td>
@@ -1115,7 +1114,7 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
 				$tabs = [
 					['scripts' => ['index.php'], 'label' => 'Главная', 'href' => 'index.php'],
 					['scripts' => ['channel.php', 'favourites.php', 'friends.php', 'results.php', 'video.php'], 'label' => 'Смотреть&nbsp;видео', 'href' => 'channel.php'],
-					['scripts' => ['upload.php'], 'label' => 'Загружать&nbsp;видео', 'href' => 'upload.php'],
+					['scripts' => ['upload.php'], 'label' => 'Загрузить&nbsp;видео', 'href' => 'upload.php'],
 					['scripts' => ['my_friends_invite.php'], 'label' => 'Пригласить&nbsp;друзей', 'href' => 'my_friends_invite.php'],
 				];
 				$found = false;
@@ -1176,7 +1175,7 @@ $filters = [
     'rated' => 'Высоко оцененные',
     'discussed' => 'Обсуждаемые',
     'favorites' => 'Избранные',
-    'random' => 'Случайные'
+    'random' => 'Случайные',
 ];
 
 $first = true;
@@ -1627,7 +1626,7 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
 				$tabs = [
 					['scripts' => ['index.php'], 'label' => 'Главная', 'href' => 'index.php'],
 					['scripts' => ['channel.php', 'favourites.php', 'friends.php', 'results.php', 'video.php'], 'label' => 'Смотреть&nbsp;видео', 'href' => 'channel.php'],
-					['scripts' => ['upload.php'], 'label' => 'Загружать&nbsp;видео', 'href' => 'upload.php'],
+					['scripts' => ['upload.php'], 'label' => 'Загрузить&nbsp;видео', 'href' => 'upload.php'],
 					['scripts' => ['my_friends_invite.php'], 'label' => 'Пригласить&nbsp;друзей', 'href' => 'my_friends_invite.php'],
 				];
 				$found = false;

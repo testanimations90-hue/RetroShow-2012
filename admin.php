@@ -432,12 +432,12 @@ $stats_fmt = function ($n) {
     return number_format((int)$n, 0, '', ',');
 };
 
-showHeader("Админ панель");
+showHeader("Администрирование");
 ?>
 
 <div style="padding: 0px 5px 0px 5px;">
 
-<div class="tableSubTitle">Админ панель</div>
+<div class="tableSubTitle">Администрирование</div>
 
 <?php if ($error): ?>
 	<div class="errorBox" style="margin-bottom:8px;"> <?=htmlspecialchars($error)?> </div>
@@ -482,6 +482,11 @@ showHeader("Админ панель");
 
 <table width="500" align="center" cellpadding="0" cellspacing="0" border="0" style="border-collapse: separate; border-spacing: 0; margin-top: 10px;">
 
+<div style="text-align: center;">
+    <b><a href="admin.php">Главная</a> // <a href="admin.php?p=recs">Управление рекомендациями</a> </b>
+    <br>
+    <br>
+</div>
 <tr>
       <td width="120" style="font-size:13px; color:#333; padding-bottom:8px; vertical-align:top;"><b>Текст новости:</b></td>
       <td style="font-size:13px; color:#222; padding-bottom:8px;" colspan="4">
