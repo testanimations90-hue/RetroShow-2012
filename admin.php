@@ -19,6 +19,18 @@ if (!in_array($user, $admins, true)) {
 $message = '';
 $error = '';
 
+function admin_blog_date_title(int $ts): string {
+    $months = [
+        1 => 'января', 2 => 'февраля', 3 => 'марта', 4 => 'апреля',
+        5 => 'мая', 6 => 'июня', 7 => 'июля', 8 => 'августа',
+        9 => 'сентября', 10 => 'октября', 11 => 'ноября', 12 => 'декабря'
+    ];
+    $d = (int)date('j', $ts);
+    $m = $months[(int)date('n', $ts)] ?? date('F', $ts);
+    $y = (int)date('Y', $ts);
+    return $d . ' ' . $m . ', ' . $y . ' г.';
+}
+
 function admin_modlog_file() {
     return get_modlog_path();
 }
@@ -261,6 +273,23 @@ if (isset($_POST['field_command']) && $_POST['field_command'] == 'news_submit') 
     }
 }
 
+if (isset($_POST['field_command']) && $_POST['field_command'] === 'blog_add_post') {
+    $blog_text = trim((string)($_POST['blog_post_text'] ?? ''));
+    if ($blog_text === '') {
+        $error = 'Текст поста не может быть пустым.';
+    } else {
+        try {
+            $ts = time();
+            $title = admin_blog_date_title($ts);
+            $st = $db->prepare('INSERT INTO blog_posts (title, body, created_at, author) VALUES (?, ?, ?, ?)');
+            $st->execute([$title, $blog_text, $ts, (string)$user]);
+            $message = 'Пост успешно опубликован.';
+        } catch (Exception $e) {
+            $error = 'Ошибка публикации поста.';
+        }
+    }
+}
+
 if (isset($_POST['field_command']) && $_POST['field_command'] === 'processing_submit') {
     $en = isset($_POST['field_processing_enabled']) && $_POST['field_processing_enabled'] === '1';
     $url = trim((string)($_POST['field_processing_url'] ?? ''));
@@ -432,12 +461,27 @@ $stats_fmt = function ($n) {
     return number_format((int)$n, 0, '', ',');
 };
 
+$p = isset($_GET['p']) ? $_GET['p'] : '';
+$blog_posts = [];
+if ($p === 'blog') {
+    try {
+        $stBlog = $db->query('SELECT id, title, body, created_at, author FROM blog_posts ORDER BY created_at DESC, id DESC LIMIT 100');
+        $blog_posts = $stBlog->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (Exception $e) {
+        $blog_posts = [];
+    }
+}
+
 showHeader("Администрирование");
 ?>
 
 <div style="padding: 0px 5px 0px 5px;">
 
+<?php if ($p == 'blog'): ?>
+<div class="tableSubTitle">Управление блогом</div>
+<?php else: ?>
 <div class="tableSubTitle">Администрирование</div>
+<?php endif; ?>
 
 <?php if ($error): ?>
 	<div class="errorBox" style="margin-bottom:8px;"> <?=htmlspecialchars($error)?> </div>
@@ -446,8 +490,10 @@ showHeader("Администрирование");
 	<div class="confirmBox" style="margin-bottom:8px;"><?=htmlspecialchars($message)?></div>
 <?php endif; ?>
 
+<?php if ($p != 'blog'): ?>
 <form method="post" action="admin.php">
 <input type="hidden" name="field_command" value="news_submit">
+<?php endif; ?>
 
 <table class="roundedTable" width="180" align="right" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEEEDD">
 <tbody>
@@ -456,6 +502,7 @@ showHeader("Администрирование");
     <td width="100%"><img src="img/pixel.gif" width="1" height="5"></td>
     <td><img src="img/box_login_tr.gif" width="5" height="5"></td>
 </tr>
+
 <tr>
     <td><img src="img/pixel.gif" width="5" height="1"></td>
     <td width="170">
@@ -481,6 +528,23 @@ showHeader("Администрирование");
 </tbody></table>
 
 <table width="500" align="center" cellpadding="0" cellspacing="0" border="0" style="border-collapse: separate; border-spacing: 0; margin-top: 10px;">
+
+<div style="font-size: 13px; font-weight: bold; text-align:center; margin-bottom: 20px;">
+    <a href="admin.php">Главная</a> // <a href="admin.php?p=blog">Управление блогом</a>
+</div>
+
+<?php if ($p == 'blog'): ?>
+</div>
+<div class="highlight">Опубликовать новый пост</div>
+<form method="post" action="admin.php?p=blog">
+<input type="hidden" name="field_command" value="blog_add_post">
+<br>
+<textarea name="blog_post_text" style="width:500px;height:400px; margin-bottom: 0px;"></textarea>
+<input type="submit" value="Опубликовать пост" style="margin-top: 15px;">
+</form>
+
+<?php else: ?>
+    
 <tr>
       <td width="120" style="font-size:13px; color:#333; padding-bottom:8px; vertical-align:top;"><b>Текст новости:</b></td>
       <td style="font-size:13px; color:#222; padding-bottom:8px;" colspan="4">
@@ -495,7 +559,9 @@ showHeader("Администрирование");
       </td>
     </tr>
 </table>
+<?php if ($p != 'blog'): ?>
 </form>
+<?php endif; ?>
 
 <form method="post" action="admin.php">
 <input type="hidden" name="field_command" value="processing_submit">
@@ -657,4 +723,5 @@ if (pe) {
   adminProcessingToggle();
 }
 </script>
+<?php endif; ?>
 <?php showFooter(); ?>

@@ -9,6 +9,10 @@ if ($p == 'whats_new') {
 	$title = 'О нас';
 }
 
+function about_blog_body_html(string $text): string {
+    return nl2br(trim($text));
+}
+
 showHeader($title);
 ?>
 
@@ -29,18 +33,26 @@ showHeader($title);
 
 <?php if ($p == 'whats_new') { ?>
 
-<div class="tableSubTitle">30 марта, 2026 г.</div>
-
-Здравствуйте, уважаемые пользователи! Вот и заработал раздел <b>«Что нового»</b>. Что касается недавних обновлений, то появилась система личных сообщений, но на данный момент она работает лишь в одну сторону — входящие. Туда вам будут приходить системные оповещения, такие как кто-то прокомментировал ваше видео, ваш канал или ответил в вашей ветке комментариев.
-
+<?php
+$posts = [];
+try {
+    $st = $db->query('SELECT title, body FROM blog_posts ORDER BY created_at DESC, id DESC');
+    $posts = $st->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Exception $e) {
+    $posts = [];
+}
+if ($posts !== []):
+    foreach ($posts as $post):
+?>
+<div class="tableSubTitle"><?=htmlspecialchars((string)($post['title'] ?? ''), ENT_QUOTES, 'UTF-8')?></div>
+<?=about_blog_body_html((string)($post['body'] ?? ''))?>
 <br><br>
-Также появилась возможность прикреплять к вашим комментариям видео, выбирая как из ваших собственных загруженных видео, так и из тех видео, которые вы добавили в избранное.
-
-<br><br>
-Надеюсь, вам, уважаемые пользователи, будет полезно это обновление! Спасибо за внимание.
-
-<br><br>
-Помните, что скачать исходный код движка вы всегда сможете в <a href="https://github.com/tankwars92/RetroShow">соответствующем GitHub-репозитории</a>.
+<?php
+    endforeach;
+else:
+?>
+Пока нет новостей. Загляните позже!
+<?php endif; ?>
 
 <?php } else { ?>
 

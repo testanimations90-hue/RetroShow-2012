@@ -475,6 +475,15 @@ $db->exec("CREATE TABLE IF NOT EXISTS meta (
     value TEXT
 )");
 
+$db->exec("CREATE TABLE IF NOT EXISTS blog_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    author TEXT
+)");
+try { $db->exec("CREATE INDEX IF NOT EXISTS idx_blog_posts_created_at ON blog_posts (created_at DESC, id DESC)"); } catch (Exception $e) {}
+
 try {
     $has_en = $db->query("SELECT 1 FROM meta WHERE key = 'processing_enabled' LIMIT 1")->fetchColumn();
     $has_url = $db->query("SELECT 1 FROM meta WHERE key = 'processing_server_url' LIMIT 1")->fetchColumn();

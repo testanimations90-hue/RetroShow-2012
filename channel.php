@@ -1253,6 +1253,16 @@ foreach ($filters as $filter_key => $filter_label) {
 				foreach ($videos as $video):
 					if ($i % 5 == 0) echo '<tr valign="top">';
 					list($rc, $ra) = channel_get_rating_stats($db, $video['id']);
+					$card_comments = isset($video['comments_count']) ? (int)$video['comments_count'] : 0;
+					if ($card_comments <= 0) {
+						try {
+							$stCardCc = $db->prepare("SELECT COUNT(*) FROM comments WHERE video_id = ?");
+							$stCardCc->execute([(int)$video['id']]);
+							$card_comments = (int)$stCardCc->fetchColumn();
+						} catch (Exception $e) {
+							$card_comments = 0;
+						}
+					}
 					$title_display = mb_strlen($video['title']) > 20 ? mb_substr($video['title'], 0, 22) . '...' : $video['title'];
 				?>
 					<td width="20%" style="padding: 2px; vertical-align: top;">
@@ -1266,7 +1276,7 @@ foreach ($filters as $filter_key => $filter_label) {
 							<div class="moduleFeaturedDetails" style="text-align:center; clear: left;">
 								Добавлено: <?=time_ago(strtotime($video['time']))?><br>
 								от <a href="channel.php?user=<?=urlencode($video['user'])?>" style="color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($video['user'])?></a><br>
-								Просмотров: <?=intval($video['views'])?> | Комм. <?=intval($video['comments'])?>
+								Просмотров: <?=intval($video['views'])?> | Комм. <?=intval($card_comments)?>
                 </div>
                 <?php if ($ra > 0): ?>
                   <center><?= channel_render_avg_stars_html($ra, $rc, false) ?></center>
