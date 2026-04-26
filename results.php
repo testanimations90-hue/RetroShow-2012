@@ -292,9 +292,7 @@ showHeader('Результаты поиска: ' . htmlspecialchars($search_quer
              </div>
             
             <?php if (empty($videos)): ?>
-                <div style="background-color:#FFFFFF;padding: 6px; ">
-			Не найдено видео по запросу '<?=htmlspecialchars($search_query)?>'.
-		</div>
+              <div style="padding:10px;">Не найдено видео по запросу '<?=htmlspecialchars($search_query)?>'.</div>
             <?php else: ?>
               
               <?php foreach ($paged_videos as $video):
