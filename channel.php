@@ -1,6 +1,7 @@
 <?php
 include("init.php");
 include_once 'template.php';
+require_once __DIR__ . '/recs.php';
 
 $filter = isset($_GET['filter']) ? $_GET['filter'] : 'recent';
 
@@ -359,6 +360,8 @@ if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
                                     <input type="hidden" name="add_friend" value="1">
                                     <input type="submit" value="Добавить друга">
                                 </form>
+                            <?php else: ?>
+                              <a href="register.php">Зарегистрируйтесь</a> или <a href="login.php">войдите</a>, чтобы добавить друга
                             <?php endif; ?>
                             <br><br>
                             <div style="font-size:14px;font-weight:bold;color:#003366;margin-bottom:5px;">
@@ -897,8 +900,24 @@ if (!$user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
     $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
     $per_page = 20;
     $offset = ($page - 1) * $per_page;
+    $show_recs_block = true;
+    if (isset($_SESSION['user'])) {
+        try {
+            $stRecsEnabled = $db->prepare("SELECT recs_enabled FROM users WHERE login = ? LIMIT 1");
+            $stRecsEnabled->execute([$_SESSION['user']]);
+            $recsEnabledVal = $stRecsEnabled->fetchColumn();
+            if ($recsEnabledVal !== false && (string)$recsEnabledVal === '0') {
+                $show_recs_block = false;
+            }
+        } catch (Exception $e) {
+            $show_recs_block = true;
+        }
+    }
     
     $filter = isset($_GET['filter']) ? $_GET['filter'] : 'recent';
+    if ($filter === 'recs' && !(isset($_SESSION['user']) && $show_recs_block)) {
+        $filter = 'recent';
+    }
     $filter_name = 'Последние';
     
     switch ($filter) {
@@ -925,6 +944,9 @@ if (!$user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
             break;
         case 'featured':
             $filter_name = 'Рекомендуемые';
+            break;
+        case 'recs':
+            $filter_name = 'Рекомендованные';
             break;
     }
     
@@ -1006,9 +1028,24 @@ if (!$user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
             $stmt->execute();
             $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
             break;
+        case 'recs':
+            $videos = [];
+            try {
+                $viewerUser = isset($_SESSION['user']) ? (string)$_SESSION['user'] : null;
+                $viewerIp = isset($_SERVER['REMOTE_ADDR']) ? (string)$_SERVER['REMOTE_ADDR'] : '';
+                $all_recs = recs_get_home_recommendations($db, $viewerUser, $viewerIp, 100);
+                $total = count($all_recs);
+                $total_pages = 1;
+                $videos = $all_recs;
+            } catch (Exception $e) {
+                $videos = [];
+                $total = 0;
+                $total_pages = 0;
+            }
+            break;
     }
     
-    if ($filter !== 'discussed' && $filter !== 'favorites' && $filter !== 'rated' && $filter !== 'random') {
+    if ($filter !== 'discussed' && $filter !== 'favorites' && $filter !== 'rated' && $filter !== 'random' && $filter !== 'recs') {
         $stmt = $db->prepare("SELECT COUNT(*) FROM videos WHERE private = 0 AND " . visible_video_sql_condition('videos', 'user'));
         $stmt->execute();
         $total = $stmt->fetchColumn();
@@ -1177,6 +1214,10 @@ $filters = [
     'favorites' => 'Избранные',
     'random' => 'Случайные',
 ];
+
+if (isset($_SESSION['user']) && $show_recs_block):
+    $filters['recs'] = 'Для вас';
+endif;
 
 $first = true;
 foreach ($filters as $filter_key => $filter_label) {

@@ -624,6 +624,7 @@ $missing_cols = [
     'profile_bull' => 'TEXT DEFAULT "1"',
     'player_type' => 'TEXT DEFAULT "auto"',
     'home_block_type' => 'TEXT DEFAULT "recent_added"',
+    'recs_enabled' => 'TEXT DEFAULT "1"',
     'header_logo' => 'TEXT DEFAULT "retroshow"',
     'reset_token' => 'TEXT',
     'reset_token_expires' => 'INTEGER'

@@ -14,7 +14,7 @@ $pw_error = '';
 $pw_success = false;
 
 try {
-    $stmt = $db->prepare('SELECT email, about_me, gender, birthday_mon, birthday_day, birthday_yr, country, name, last_n, relationship, website, profile_bull, player_type, home_block_type, header_logo, hometown, city FROM users WHERE login = ?');
+    $stmt = $db->prepare('SELECT email, about_me, gender, birthday_mon, birthday_day, birthday_yr, country, name, last_n, relationship, website, profile_bull, player_type, home_block_type, recs_enabled, header_logo, hometown, city FROM users WHERE login = ?');
     $stmt->execute([$user]);
     $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
@@ -40,6 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $profile_bull = $_POST['profile_bull'] ?? '1';
     $player_type = $_POST['player_type'] ?? 'auto';
     $home_block_type = $_POST['home_block_type'] ?? 'recent_added';
+    $recs_enabled = isset($_POST['recs_enabled']) ? '1' : '0';
     $hometown = trim($_POST['hometown'] ?? '');
     $city = trim($_POST['city'] ?? '');
     if ($home_block_type !== 'recent_viewed') {
@@ -52,8 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (mb_strlen($about_me) > 500) $about_me = mb_substr($about_me, 0, 500);
     
-    $stmt = $db->prepare('UPDATE users SET email = ?, about_me = ?, gender = ?, birthday_mon = ?, birthday_day = ?, birthday_yr = ?, country = ?, name = ?, last_n = ?, relationship = ?, website = ?, profile_bull = ?, player_type = ?, home_block_type = ?, header_logo = ?, hometown = ?, city = ? WHERE login = ?');
-    if ($stmt->execute([$email, $about_me, $gender, $birthday_mon, $birthday_day, $birthday_yr, $country, $name, $last_n, $relationship, $website, $profile_bull, $player_type, $home_block_type, $header_logo, $hometown, $city, $user])) {
+    $stmt = $db->prepare('UPDATE users SET email = ?, about_me = ?, gender = ?, birthday_mon = ?, birthday_day = ?, birthday_yr = ?, country = ?, name = ?, last_n = ?, relationship = ?, website = ?, profile_bull = ?, player_type = ?, home_block_type = ?, recs_enabled = ?, header_logo = ?, hometown = ?, city = ? WHERE login = ?');
+    if ($stmt->execute([$email, $about_me, $gender, $birthday_mon, $birthday_day, $birthday_yr, $country, $name, $last_n, $relationship, $website, $profile_bull, $player_type, $home_block_type, $recs_enabled, $header_logo, $hometown, $city, $user])) {
         $success = true;
 		
         $user_data['email'] = $email;
@@ -70,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $user_data['profile_bull'] = $profile_bull;
         $user_data['player_type'] = $player_type;
         $user_data['home_block_type'] = $home_block_type;
+        $user_data['recs_enabled'] = $recs_enabled;
         $user_data['header_logo'] = $header_logo;
         $user_data['hometown'] = $hometown;
         $user_data['city'] = $city;
@@ -540,7 +542,7 @@ showHeader('Настройки аккаунта');
       <td colspan="5">
         <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td style="color:#CC6633; font-weight:bold; font-size:15px; padding-bottom:2px;" valign="middle">Внешний вид</td>
+            <td style="color:#CC6633; font-weight:bold; font-size:15px; padding-bottom:2px;" valign="middle">Настройки сайта</td>
           </tr>
         </table>
       </td>
@@ -566,6 +568,13 @@ showHeader('Настройки аккаунта');
     <label for="home_block_recent_added">Недавно добавленные</label><br>
     <input type="radio" name="home_block_type" value="recent_viewed" id="home_block_recent_viewed" <?= ($user_data['home_block_type'] ?? 'recent_added') == 'recent_viewed' ? 'checked' : '' ?>>
     <label for="home_block_recent_viewed">Недавно просмотренные</label><br>
+  </td>
+  </tr>
+  <tr>
+  <td width="120" style="font-size:13px; color:#333; padding-bottom:8px; vertical-align:top;"><b>Рекомендации:</b></td>
+  <td style="font-size:13px; color:#222; padding-bottom:8px;" colspan="4">
+    <input type="checkbox" name="recs_enabled" value="1" id="recs_enabled" <?= (($user_data['recs_enabled'] ?? '1') === '1') ? 'checked' : '' ?>>
+    <label for="recs_enabled">Включить персональные рекомендации</label>
   </td>
   </tr>
   <tr>

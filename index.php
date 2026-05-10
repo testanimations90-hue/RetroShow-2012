@@ -16,8 +16,10 @@ if (isset($_GET['v']) && (string)$_GET['v'] !== '') {
 
 include("template.php");
 require_once __DIR__ . '/duration_helper.php';
+require_once __DIR__ . '/recs.php';
 
 $contest = false;
+$show_recs_block = true;
 
 if (isset($_SESSION['user'])) {
     $current_user = $_SESSION['user'];
@@ -62,14 +64,19 @@ if (isset($_SESSION['user'])) {
         $subscribers_count = 0;
     }
     try {
-        $stmt = $db->prepare("SELECT home_block_type FROM users WHERE login = ? LIMIT 1");
+        $stmt = $db->prepare("SELECT home_block_type, recs_enabled FROM users WHERE login = ? LIMIT 1");
         $stmt->execute([$current_user]);
-        $hbt = (string)$stmt->fetchColumn();
+        $settings_row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $hbt = (string)($settings_row['home_block_type'] ?? 'recent_added');
         if ($hbt === 'recent_viewed') {
             $home_block_type = 'recent_viewed';
         }
+        if (isset($settings_row['recs_enabled']) && (string)$settings_row['recs_enabled'] === '0') {
+            $show_recs_block = false;
+        }
     } catch (Exception $e) {
         $home_block_type = 'recent_added';
+        $show_recs_block = true;
     }
     try {
         $stmt = $db->prepare("SELECT email FROM users WHERE login = ? LIMIT 1");
@@ -534,11 +541,12 @@ if ($tags_mode === 'tags') {
   color: #333;
   text-decoration: underline;
 }
+
 </style>
 
 <table width="790" align="center" cellpadding="0" cellspacing="0" border="0">
 	<tbody><tr valign="top">
-		<td style="padding-right: 15px;">
+		<td style="padding-right: 9px;">
 		
 		<table width="595" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#E5ECF9">
 			<tbody><tr>
@@ -628,7 +636,173 @@ if ($tags_mode === 'tags') {
 				<td><img src="img/box_login_br.gif" width="5" height="5"></td>
 			</tr>
 		</tbody></table>
+        
+        <?php
+        if (isset($_SESSION['user']) && $show_recs_block):
+        $recs_videos = [];
+        try {
+            $recs_user = isset($_SESSION['user']) ? (string)$_SESSION['user'] : null;
+            $recs_ip = isset($_SERVER['REMOTE_ADDR']) ? (string)$_SERVER['REMOTE_ADDR'] : '';
+            $recs_videos = recs_get_home_recommendations($db, $recs_user, $recs_ip, 12);
+        } catch (Exception $e) {
+            $recs_videos = [];
+        }
+        $recs_total = count($recs_videos);
+        if ($recs_total > 0):
+        ?>
+        <table class="roundedTable" width="585" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="margin-bottom: 0px; margin-top: 5px;">
+			<tbody><tr>
+				<td><img src="img/box_login_tl.gif" width="5" height="5"></td>
+				<td width="100%"><img src="img/pixel.gif" width="1" height="5"></td>
+				<td><img src="img/box_login_tr.gif" width="5" height="5"></td>
+			</tr>
+			<tr>
+				<td><img src="img/pixel.gif" width="5" height="1"></td>
+				<td width="575">
+                    <div style="padding-left: 10px; padding-right: 10px;">
+                        <table width="571" height="28" cellpadding="0" cellspacing="0" border="0" background="img/MediumGenericTab.jpg">
+                            <tbody><tr>
+                                <td width="370">
+                                    <span style="padding-left: 5px; font-size: 13px; color: #6D6D6D; font-weight: bold; padding-right: 5px;">Рекомендованное для вас</span>
+                                    <span style="font-size: 10px; color: #999999;"><span id="counter_recs_for_you">[1 - <?=min(4,$recs_total)?> из <?=$recs_total?>]</span></span>
+                                </td>
+                                <td align="left"><span style="font-size: 13px; color: #6D6D6D;"><span></span></span></td>
+                                <td align="right">
+                                    <span style="padding-right: 10px; padding-left: 10px;">
+                                        <img src="img/icon_todo.gif" border="0" width="23" height="14" style="padding-right: 5px; vertical-align: middle;">
+                                        <a href="channel.php?filter=recs">Больше похожих видео...</a>
+                                    </span>
+                                </td>
+                            </tr></tbody>
+                        </table>
+                    </div>
 
+                    <div style="padding-left: 1px; text-align:center;">
+                        <table width="21" height="121" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+                            <tbody><tr>
+                                <td><a href="javascript:void(0);" onclick="return recsGo(-1);" style="display:block; cursor:default;"><img src="img/LeftTableArrowWhite.jpg" width="21" height="121" border="0" alt="" style="cursor:default;"></a></td>
+                                <td>
+                                    <table width="548" height="121" align="center" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFFFFF; border-bottom: 1px solid #D0D0D0;">
+                                        <tbody><tr>
+                                            <?php for ($slot = 0; $slot < 4; $slot++): ?>
+                                            <td width="25%" align="center" valign="top">
+                                                <?php
+                                                $idx = $slot;
+                                                if ($idx < $recs_total):
+                                                    $rv = $recs_videos[$idx];
+                                                    $rid = (int)($rv['id'] ?? 0);
+                                                    $rpid = (string)($rv['public_id'] ?? $rid);
+                                                    $rt = (string)($rv['title'] ?? '');
+                                                    $rt_short = (function_exists('mb_strlen') && mb_strlen($rt, 'UTF-8') > 18) ? mb_substr($rt, 0, 18, 'UTF-8') . '...' : $rt;
+                                                    $rts = strtotime((string)($rv['time'] ?? ''));
+                                                    $rago = ($rts !== false && $rts > 0) ? time_ago((int)$rts) : 'только что';
+                                                ?>
+                                                <div id="recs_item_<?=$slot?>" style="display:block;">
+                                                    <div style="margin-top: 8px;">
+                                                        <a href="video.php?id=<?=htmlspecialchars($rpid, ENT_QUOTES, 'UTF-8')?>"><img src="<?=htmlspecialchars((string)($rv['preview'] ?? ''), ENT_QUOTES, 'UTF-8')?>" width="80" height="60" border="0" style="border:1px solid #CCC;"></a>
+                                                    </div>
+                                                    <div style="font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #666666; padding-bottom: 3px;">
+                                                        <a href="video.php?id=<?=htmlspecialchars($rpid, ENT_QUOTES, 'UTF-8')?>" title="<?=htmlspecialchars($rt, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($rt_short, ENT_QUOTES, 'UTF-8')?></a>
+                                                    </div>
+                                                    <div style="font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #666666; padding-bottom: 3px;">
+                                                        <?=htmlspecialchars($rago, ENT_QUOTES, 'UTF-8')?>
+                                                    </div>
+                                                </div>
+                                                <?php else: ?>
+                                                &nbsp;
+                                                <?php endif; ?>
+                                            </td>
+                                            <?php endfor; ?>
+                                        </tr></tbody>
+                                    </table>
+                                </td>
+                                <td><a href="javascript:void(0);" onclick="return recsGo(1);" style="display:block; cursor:default;"><img src="img/RightTableArrowWhite.jpg" width="21" height="121" border="0" alt="" style="cursor:default;"></a></td>
+                            </tr></tbody>
+                        </table>
+                    </div>
+
+                    <script type="text/javascript">
+                    var recsTotal = <?= (int)$recs_total ?>;
+                    var recsPerPage = 4;
+                    var recsPage = 0;
+                    var recsData = [
+                        <?php
+                        $jsParts = [];
+                        foreach ($recs_videos as $rv) {
+                            $rid = (int)($rv['id'] ?? 0);
+                            $rpid = (string)($rv['public_id'] ?? $rid);
+                            $rt = (string)($rv['title'] ?? '');
+                            $rt_short = (function_exists('mb_strlen') && mb_strlen($rt, 'UTF-8') > 18) ? mb_substr($rt, 0, 18, 'UTF-8') . '...' : $rt;
+                            $rts = strtotime((string)($rv['time'] ?? ''));
+                            $rago = ($rts !== false && $rts > 0) ? time_ago((int)$rts) : 'только что';
+                            $jsParts[] = "{id:'" . addslashes($rpid) . "',p:'" . addslashes((string)($rv['preview'] ?? '')) . "',t:'" . addslashes($rt) . "',ts:'" . addslashes($rt_short) . "',ago:'" . addslashes($rago) . "'}";
+                        }
+                        echo implode(",\n", $jsParts);
+                        ?>
+                    ];
+                    function recsGet(id) {
+                        if (document.getElementById) return document.getElementById(id);
+                        if (document.all) return document.all[id];
+                        return null;
+                    }
+                    function recsRender() {
+                        var start = recsPage * recsPerPage;
+                        if (start < 0) start = 0;
+                        if (start >= recsTotal) start = 0;
+                        for (var i = 0; i < recsPerPage; i++) {
+                            var slot = recsGet('recs_item_' + i);
+                            if (!slot) continue;
+                            var idx = start + i;
+                            if (idx >= recsTotal) {
+                                slot.innerHTML = '&nbsp;';
+                                continue;
+                            }
+                            var v = recsData[idx];
+                            var vid = (typeof encodeURIComponent !== 'undefined') ? encodeURIComponent(v.id) : escape(v.id);
+                            slot.innerHTML =
+                                '<div style="margin-top: 8px;">' +
+                                '<a href="video.php?id=' + vid + '"><img src="' + v.p + '" width="80" height="60" border="0" style="border:1px solid #CCC;"></a>' +
+                                '</div>' +
+                                '<div style="font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #666666; padding-bottom: 3px;">' +
+                                '<a href="video.php?id=' + vid + '" title="' + v.t + '">' + v.ts + '</a>' +
+                                '</div>' +
+                                '<div style="font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #666666; padding-bottom: 3px;">' +
+                                v.ago +
+                                '</div>';
+                        }
+                        var c = recsGet('counter_recs_for_you');
+                        if (c) {
+                            var a = start + 1;
+                            var b = start + recsPerPage;
+                            if (b > recsTotal) b = recsTotal;
+                            c.innerHTML = '[' + a + ' - ' + b + ' из ' + recsTotal + ']';
+                        }
+                    }
+                    function recsShift(dir) {
+                        var pages = Math.ceil(recsTotal / recsPerPage);
+                        if (pages < 1) pages = 1;
+                        recsPage = recsPage + dir;
+                        if (recsPage < 0) recsPage = pages - 1;
+                        if (recsPage >= pages) recsPage = 0;
+                        recsRender();
+                    }
+                    function recsGo(dir) {
+                        recsShift(dir);
+                        return false;
+                    }
+                    recsRender();
+                    </script>
+				</td>
+				<td><img src="img/pixel.gif" width="5" height="1"></td>
+			</tr>
+			<tr>
+				<td valign="bottom"><img src="img/box_login_bl.gif" width="5" height="5"></td>
+				<td><img src="img/pixel.gif" width="1" height="5"></td>
+				<td valign="bottom"><img src="img/box_login_br.gif" width="5" height="5"></td>
+			</tr>
+		</tbody></table>
+        <?php endif; ?>
+        <?php endif; ?>
 		<?php if (!empty($recent_videos)): ?>
 		<div style="padding: 10px 0px 10px 0px;">
 		<table width="595" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEEEDD">
