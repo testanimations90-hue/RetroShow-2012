@@ -1,3 +1,4 @@
+# --- Настройки PHP ---
 <IfModule mod_php.c>
     php_value upload_max_filesize 1000M
     php_value post_max_size 1000M
@@ -18,6 +19,7 @@
     php_value error_reporting 22519
 </IfModule>
 
+# --- Защита файлов (БД и логи) ---
 <Files "retroshow.db">
     Order allow,deny
     Deny from all
@@ -42,12 +44,25 @@
     Require all denied
 </FilesMatch>
 
+Options -Indexes
+
+ErrorDocument 403 /error.php
+ErrorDocument 404 /error.php
+ErrorDocument 500 /error.php
+ErrorDocument 504 /error.php
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteRule retroshow\.sqlite$ - [F,NC]
     RewriteRule \.(sqlite|db|sqlite3)$ - [F,NC]
+    RewriteCond %{QUERY_STRING} ^v=(.*)$
+    RewriteRule ^watch$ video.php?id=%1 [L]
+    RewriteCond %{QUERY_STRING} ^v=(.*)$
+    RewriteRule ^get_watch$ get_video.php?id=%1 [L]
+    RewriteRule ^browse/?$ channel.php [L,QSA]
+    RewriteRule ^user/([^/]+)/?$ channel.php?user=$1 [L,QSA]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond $1 !(watch|browse|error\.php|index\.php|video\.php|channel\.php) [NC]
+    RewriteRule ^([^/]+)/?$ channel.php?user=$1 [L,QSA]
 </IfModule>
-
-Options -Indexes
-
-ErrorDocument 504 /index.php
