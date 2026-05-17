@@ -1046,6 +1046,13 @@ if ($is_ajax_fav && ($want_fav_add || $want_fav_del)) {
 list($ratings_count, $avg_rating) = get_video_rating_stats($db, $id);
 $ip = $_SERVER['REMOTE_ADDR'];
 $current_rating = get_user_current_rating($db, $id, $user, $ip);
+
+$author_video_count = 0;
+if (!empty($video['user'])) {
+    $stmt_author_count = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND (private = 0 OR private IS NULL)");
+    $stmt_author_count->execute([$video['user']]);
+    $author_video_count = (int)$stmt_author_count->fetchColumn();
+}
 ?>
 
 <html><head><title><?=htmlspecialchars($video['title'])?></title>
@@ -1197,6 +1204,20 @@ if ($admin_confirm !== ''):
 <tr valign="top">
   <td width="435">
     <div style="font-size: 20px; font-weight: bold; margin-bottom: 5px;"><?=htmlspecialchars($video['title'])?></div>
+    <span class="yt-uix-button-group"><button href="/user/<?=urlencode($video['user'])?>" type="button" class="start yt-uix-button yt-uix-button-default" onclick=";window.location.href=this.getAttribute('href');return false;" role="button"><span class="
+"><?=urlencode($video['user'])?> </span></button>
+    <form method="post" action="/user/<?=urlencode($video['user'])?>" style="display:inline; margin:0;">
+    <input type="hidden" name="add_friend" value="1">
+    <div class="yt-subscription-button-hovercard yt-uix-hovercard" data-card-class="watch-subscription-card"><span class="yt-uix-button-context-light"><button type="submit" title="" type="button" class="yt-subscription-button yt-subscription-button-js-default end yt-uix-button yt-uix-button-subscription yt-uix-tooltip" data-enable-hovercard="true" data-subscription-value="4QobU6STFB0P71PMvOGN5A" data-force-position="true" data-position="topright" data-subscription-feature="watch" data-subscription-type="" role="button" data-subscription-initialized="true"><span class="yt-uix-button-icon-wrapper"><img class="yt-uix-button-icon yt-uix-button-icon-subscribe" src="yt/img/pixel-vfl3z5WfW.gif" alt=""><span class="yt-valign-trick"></span></span><span class="yt-uix-button-content">  <span class="subscribe-label">Subscribe</span>
+  <span class="subscribed-label">Subscribed</span>
+  <span class="unsubscribe-label">Unsubscribe</span>
+ </span></button></span><div class="yt-uix-hovercard-content hid">  <p class="loading-spinner">
+    <img src="//web.archive.org/web/20120731025701im_/http://s.ytimg.com/yt/img/pixel-vfl3z5WfW.gif" alt="">
+Loading...
+  </p></form>
+</div></div></span>
+<button onclick="_toggleclass(this,'yt-uix-expander-collapsed');return false;" type="button" id="watch-mfu-button" class="yt-uix-expander-collapsed yt-uix-button yt-uix-button-default" data-button-toggle="true" data-video-user-id="
+" data-button-menu-id="some-nonexistent-menu" data-video-id="jNQXAC9IVRw" data-button-action="yt.www.watch.watch5.handleToggleMoreFromUser" role="button"><span class="yt-uix-button-content"><?= $author_video_count ?> видео</span><img class="yt-uix-button-arrow" src="/yt/img/pixel-vfl3z5WfW.gif" alt=""></button>
     <link rel="stylesheet" href="viewfinder/player.css">
     <div style="text-align: center; margin-bottom: 8px;">
         <div id="noJsFlashFallback" style="border: 1px solid gray; width: 425px; height: 350px; background: #fff; text-align: center;">
