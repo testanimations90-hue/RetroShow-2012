@@ -199,7 +199,7 @@ $news_file = __DIR__ . '/news.txt';
 if (file_exists($news_file)) {
     $news_text = trim(file_get_contents($news_file));
     if (!empty($news_text)) {
-        echo '<div class="yt-alert yt-alert-default yt-alert-error  yt-alert-player"><div class="yt-alert-icon"><img src="https://web.archive.org/web/20120630034132im_///s.ytimg.com/yt/img/pixel-vfl3z5WfW.gif" class="icon master-sprite" alt="Alert icon"></div><div class="yt-alert-buttons"></div><div class="yt-alert-content" role="alert">    <span class="yt-alert-vertical-trick"></span>
+        echo '<div class="yt-alert yt-alert-default yt-alert-error  yt-alert-player"><div class="yt-alert-icon"><img src="yt/img/pixel-vfl3z5WfW.gif" class="icon master-sprite" alt="Alert icon"></div><div class="yt-alert-buttons"></div><div class="yt-alert-content" role="alert">    <span class="yt-alert-vertical-trick"></span>
     <div class="yt-alert-message"><div class="yt-alert-message">' . nl2br($news_text) . '</div>    </div>
 </div></div>';
     }
