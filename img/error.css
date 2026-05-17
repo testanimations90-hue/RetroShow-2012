@@ -1,0 +1,94 @@
+#error-page {
+  text-align:center;
+  height:100%;
+  white-space:nowrap;
+  word-break:normal
+}
+#error-page-vertical-align {
+  height:100%
+}
+#error-page-content,
+#error-page-vertical-align {
+  vertical-align:middle;
+  display:inline-block;
+  *display:inline;
+  *zoom:1
+}
+#error-page-illustration {
+  margin-bottom:-25px
+}
+#error-page-hh-illustration {
+  margin-bottom:10px
+}
+#error-page-content p {
+  width:500px;
+  margin:auto;
+  color:#333;
+  font-size:16px;
+  white-space:normal;
+  text-shadow:0 1px 1px #fff;
+  text-shadow:0 0 0 transparent,0 1px 1px #fff
+}
+#error-page-content #masthead {
+  margin:15px auto;
+  width:440px
+}
+#error-page-content #yt-masthead {
+  margin:15px auto;
+  width:440px;
+  margin-top:25px
+}
+#error-page-content #logo-container {
+  float:left;
+  margin-right:30px;
+  margin-top:0
+}
+#page.oops-content {
+  text-align:center;
+  padding-top:40px
+}
+/*
+     FILE ARCHIVED ON 11:56:53 Sep 25, 2014 AND RETRIEVED FROM THE
+     INTERNET ARCHIVE ON 10:56:58 May 17, 2026.
+     JAVASCRIPT APPENDED BY WAYBACK MACHINE, COPYRIGHT INTERNET ARCHIVE.
+
+     ALL OTHER CONTENT MAY ALSO BE PROTECTED BY COPYRIGHT (17 U.S.C.
+     SECTION 108(a)(3)).
+*/
+/*
+playback timings (ms):
+  capture_cache.get: 6.735
+  load_resource: 173.921 (2)
+  PetaboxLoader3.resolve: 87.272 (2)
+  PetaboxLoader3.datanode: 38.496 (2)
+*/
+#masthead-search {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+#search-btn {
+    float: right !important;
+    height: 29px;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+#masthead-search-terms {
+    float: left !important;
+    width: 290px;
+    height: 29px;
+    box-sizing: border-box;
+}
+
+#masthead-search-term {
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+#masthead-search::after {
+    content: "";
+    display: table;
+    clear: both;
+}
