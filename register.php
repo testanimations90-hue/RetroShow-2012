@@ -153,7 +153,7 @@ function formValidator()
 	</tr>
 	<tr>
 		<td>&nbsp;</td>
-		<td><input name="signup_button" type="submit" value="Зарегистрироваться"></td>
+		<td><input name="signup_button" type="submit" class="yt-uix-button yt-uix-button-size-default yt-uix-button-default search-btn-component search-button" value="Зарегистрироваться"></td>
 	</tr>
 	
 	<tr>

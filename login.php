@@ -40,9 +40,8 @@ showHeader("Вход");
 <?php endif; ?>
 
 <div style="padding: 0px 5px 0px 5px;">
-
-
-<div class="tableSubTitle">Вход</div>
+<br>
+<h3>Вход</h3>
 
 <table width="100%" align="center" cellpadding="0" cellspacing="0" border="0">
 	<tr valign="top">
@@ -82,7 +81,7 @@ showHeader("Вход");
 				</tr>
 				<tr>
 					<td align="right"><span class="label">&nbsp;</span></td>
-					<td><input type="submit" value="Войти"></td>
+					<td><input type="submit" class="yt-uix-button yt-uix-button-size-default yt-uix-button-default search-btn-component search-button" value="Войти"></td>
 				</tr>
 				<tr>
 					<td align="center" colspan="2"><a href="forgot.php">Забыли пароль?</a><br><br></td>

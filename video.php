@@ -1402,7 +1402,7 @@ echo $user ? render_rating_inner_html($id, (string)($video['public_id'] ?? ''), 
         <textarea tabindex="2" name="comment_text" cols="55" rows="3" style="font-size: 13px; width: 98%;"></textarea><br>
         <div class="attach-video-row" style="margin-top:3px; white-space:nowrap;">
         <span style="font-size:12px;">Прикрепить видео:</span>
-        <select name="reference_video_id" style="font-size:12px; width:180px;">
+        <select name="reference_video_id" class="yt-uix-button yt-uix-button-size-default yt-uix-button-default search-btn-component search-button style="font-size:12px; width:180px;">
             <option value="">- Ваши видео -</option>
             <?php foreach ($attach_my_videos as $vopt): ?>
             <?php $vopt_title = (string)($vopt['title'] ?? ''); if (function_exists('mb_strlen') && function_exists('mb_substr')) { if (mb_strlen($vopt_title, 'UTF-8') > 60) $vopt_title = mb_substr($vopt_title, 0, 60, 'UTF-8') . '...'; } else { if (strlen($vopt_title) > 60) $vopt_title = substr($vopt_title, 0, 60) . '...'; } ?>
@@ -1414,7 +1414,7 @@ echo $user ? render_rating_inner_html($id, (string)($video['public_id'] ?? ''), 
             <option value="<?= (int)$vopt['id'] ?>"<?= ((int)$selected_reference_video_id === (int)$vopt['id']) ? ' selected="selected"' : '' ?>><?= htmlspecialchars($vopt_title) ?></option>
             <?php endforeach; ?>
         </select>
-        <input type="submit" name="add_comment_button" value="Добавить" style="width: 75px;">
+        <input type="submit" class="yt-uix-button yt-uix-button-size-default yt-uix-button-default search-btn-component search-button" name="add_comment_button" value="Добавить" style="width: 75px;">
         </div>
         
         </form>

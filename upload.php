@@ -403,7 +403,7 @@ showHeader("Загрузка видео");
 	  </tr>
       <tr>
         <td></td>
-        <td class="upload-btn"><input type="submit" value="Далее ->" style="font-size: 13px;"></td>
+        <td class="upload-btn"><input type="submit" class="yt-uix-button yt-uix-button-size-default yt-uix-button-default search-btn-component search-button" value="Далее" style="font-size: 13px;"></td>
       </tr>
   </table>
   </form>
@@ -442,7 +442,7 @@ showHeader("Загрузка видео");
       </tr>
       <tr>
         <td></td>
-        <td class="upload-btn"><br><input type="submit" value="Загрузить видео" id="uploadBtn"></td>
+        <td class="upload-btn"><br><input type="submit" value="Загрузить видео" class="yt-uix-button yt-uix-button-size-default yt-uix-button-default search-btn-component search-button id="uploadBtn"></td>
       </tr>
     </table>
   </form>
