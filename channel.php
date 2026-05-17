@@ -1,6 +1,6 @@
 <?php
 include("init.php");
-include_once 'template.php';
+include('template.php');
 require_once __DIR__ . '/recs.php';
 
 $filter = isset($_GET['filter']) ? $_GET['filter'] : 'recent';
@@ -156,7 +156,7 @@ function get_profile_icon($username, $profile_icon_setting = '0') {
 $user_data = null;
 if ($user) {
     try {
-        $stmt_user = $db->prepare('SELECT about_me, gender, birthday_yr, birthday_mon, birthday_day, country, name, last_n, website, city, hometown, profile_comm, profile_icon FROM users WHERE login = ?');
+        $stmt_user = $db->prepare('SELECT about_me, gender, birthday_yr, birthday_mon, birthday_day, country, name, last_n, website, city, hometown, profile_comm, profile_icon, profile_icon_custom FROM users WHERE login = ?');
         $stmt_user->execute([$user]);
         $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
@@ -222,6 +222,101 @@ $total = $stmt_total->fetchColumn();
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $per_page = 5;
 $offset = ($page - 1) * $per_page;
+if (!$user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
+    $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+    $per_page = 20;
+    $offset = ($page - 1) * $per_page;
+    
+    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'recent';
+    $filter_name = 'Последние';
+    
+    switch ($filter) {
+        case 'recent': $filter_name = 'Последние'; $order_by = 'id DESC'; break;
+        case 'viewed': $filter_name = 'Популярные'; $order_by = 'views DESC, id DESC'; break;
+        case 'rated': $filter_name = 'Высоко оцененные'; break;
+        case 'discussed': $filter_name = 'Обсуждаемые'; break;
+        case 'favorites': $filter_name = 'Избранные'; break;
+        case 'random': $filter_name = 'Случайные'; break;
+    }
+    
+    // Получаем видео с учетом фильтра
+    if ($filter == 'rated') {
+        $stmt = $db->prepare("SELECT v.id, v.public_id, v.title, v.preview, v.description, v.time, v.views, v.user, v.file, 
+            COALESCE(AVG(r.rating),0) AS avg_rating, COUNT(r.id) AS votes_count
+            FROM videos v
+            LEFT JOIN ratings r ON r.video_id = v.id
+            WHERE v.private = 0
+            GROUP BY v.id
+            ORDER BY avg_rating DESC, v.views DESC LIMIT $offset, $per_page");
+        $stmt->execute();
+        $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt = $db->query("SELECT COUNT(*) FROM videos WHERE private = 0");
+        $total = $stmt->fetchColumn();
+        $total_pages = ceil($total / $per_page);
+    } elseif ($filter == 'random') {
+        $stmt = $db->prepare("SELECT COUNT(*) FROM videos WHERE private = 0");
+        $stmt->execute();
+        $total = $stmt->fetchColumn();
+        $total_pages = ceil($total / $per_page);
+        $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file FROM videos WHERE private = 0 ORDER BY RANDOM() LIMIT $offset, $per_page");
+        $stmt->execute();
+        $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $stmt = $db->prepare("SELECT COUNT(*) FROM videos WHERE private = 0");
+        $stmt->execute();
+        $total = $stmt->fetchColumn();
+        $total_pages = ceil($total / $per_page);
+        $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file FROM videos WHERE private = 0 ORDER BY $order_by LIMIT $offset, $per_page");
+        $stmt->execute();
+        $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    showHeader($filter_name . ' видео');
+    ?>
+    <div class="moduleTitleBar">
+        <div class="moduleTitle"><?= $filter_name ?> видео</div>
+    </div>
+    
+    <div style="padding: 10px; margin-bottom: 15px; background: #f5f5f5; border: 1px solid #ddd;">
+        <a href="channel.php?filter=recent" <?= $filter == 'recent' ? 'style="font-weight:bold"' : '' ?>>Последние</a> |
+        <a href="channel.php?filter=viewed" <?= $filter == 'viewed' ? 'style="font-weight:bold"' : '' ?>>Популярные</a> |
+        <a href="channel.php?filter=rated" <?= $filter == 'rated' ? 'style="font-weight:bold"' : '' ?>>Высоко оцененные</a> |
+        <a href="channel.php?filter=discussed" <?= $filter == 'discussed' ? 'style="font-weight:bold"' : '' ?>>Обсуждаемые</a> |
+        <a href="channel.php?filter=favorites" <?= $filter == 'favorites' ? 'style="font-weight:bold"' : '' ?>>Избранные</a> |
+        <a href="channel.php?filter=random" <?= $filter == 'random' ? 'style="font-weight:bold"' : '' ?>>Случайные</a>
+    </div>
+    
+    <?php foreach ($videos as $video): ?>
+    <div class="moduleEntry">
+        <table width="100%">
+            <tr valign="top">
+                <td width="120"><a href="watch?v=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>"><img src="<?= htmlspecialchars($video['preview']) ?>" width="120" height="90"></a></td>
+                <td>
+                    <div class="moduleEntryTitle"><a href="watch?v=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>"><?= htmlspecialchars($video['title']) ?></a></div>
+                    <div class="moduleEntryDetails">Добавлено: <?= time_ago(strtotime($video['time'])) ?> от <a href="/user/<?= urlencode($video['user']) ?>"><?= htmlspecialchars($video['user']) ?></a></div>
+                    <div class="moduleEntryDetails">Просмотров: <?= number_format($video['views']) ?></div>
+                </td>
+            </tr>
+        </table>
+    </div>
+    <div style="border-bottom:1px solid #ccc; margin:5px 0"></div>
+    <?php endforeach; ?>
+    
+    <?php if ($total_pages > 1): ?>
+    <div class="pagingDiv" style="margin: 10px 0;">
+        <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+            <?php if ($i == $page): ?>
+                <span class="pagerCurrent"><?= $i ?></span>
+            <?php else: ?>
+                <span class="pagerNotCurrent"><a href="?filter=<?= $filter ?>&page=<?= $i ?>"><?= $i ?></a></span>
+            <?php endif; ?>
+        <?php endfor; ?>
+    </div>
+    <?php endif; ?>
+    <?php
+    showFooter();
+    exit;
+}
 if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
     $is_owner_profile = isset($_SESSION['user']) && $_SESSION['user'] === $user;
     $are_friends = false;
@@ -232,7 +327,7 @@ if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
                 ->execute([$_SESSION['user'], $user, time()]);
         } catch (Exception $e) {
         }
-        header('Location: channel.php?user=' . urlencode($user));
+        header('Location: /user/' . urlencode($user));
         exit;
     }
     if (!$is_owner_profile && isset($_SESSION['user'])) {
@@ -331,1277 +426,398 @@ if ($user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
     }
 
     showHeader('Профиль ' . htmlspecialchars($user));
+    
     ?>
-    <table width="790" align="center" cellpadding="0" cellspacing="0" border="0">
-        <tr valign="top">
-            <td width="180">
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#E5ECF9">
-                    <tr>
-                        <td><img src="img/box_login_tl.gif" width="5" height="5" alt=""></td>
-                        <td width="100%"><img src="img/pixel.gif" width="1" height="5" alt=""></td>
-                        <td><img src="img/box_login_tr.gif" width="5" height="5" alt=""></td>
-                    </tr>
-                    <tr>
-                        <td><img src="img/pixel.gif" width="5" height="1" alt=""></td>
-                        <td align="center" style="padding:5px;">
-                            <div style="font-size:14px;font-weight:bold;color:#003366;margin-bottom:5px;">
-                                Вы знаете <?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?>?
-                            </div>
-                            <?php if ($is_owner_profile): ?>
-                                <div style="font-size:12px;color:#666;">
-                                    Это ваш профиль
-                                </div>
-                            <?php elseif (isset($_SESSION['user']) && $are_friends): ?>
-                                <div style="font-size:12px;color:#666;">
-                                    Вы уже друзья.
-                                </div>
-                            <?php elseif (isset($_SESSION['user'])): ?>
-                                <form method="post" action="channel.php?user=<?= urlencode($user) ?>" style="margin:0;">
-                                    <input type="hidden" name="add_friend" value="1">
-                                    <input type="submit" value="Добавить друга">
-                                </form>
-                            <?php else: ?>
-                              <a href="register.php">Зарегистрируйтесь</a> или <a href="login.php">войдите</a>, чтобы добавить друга
-                            <?php endif; ?>
-                            <br><br>
-                            <div style="font-size:14px;font-weight:bold;color:#003366;margin-bottom:5px;">
-                                Хотите связаться?
-                            </div>
-                            <form method="get" action="outbox.php" style="margin:0;">
-                                <input type="hidden" name="user" value="<?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?>">
-                                <input type="submit" value="Пишите мне!">
-                            </form>
-                        </td>
-                        <td><img src="img/pixel.gif" width="5" height="1" alt=""></td>
-                    </tr>
-                    <tr>
-                        <td><img src="img/box_login_bl.gif" width="5" height="5" alt=""></td>
-                        <td><img src="img/pixel.gif" width="1" height="5" alt=""></td>
-                        <td><img src="img/box_login_br.gif" width="5" height="5" alt=""></td>
-                    </tr>
-                </table>
-            </td>
-
-            <td style="padding:0 10px;">
-                <table width="100%" cellpadding="5" cellspacing="0" border="0">
-                    <tbody>
-                    <tr>
-                        <td width="120" align="right"><span class="label">Имя пользователя:</span></td>
-                        <td><?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?></td>
-                    </tr>
-                    
-                    <?php if ($name_text !== ''): ?>
-                    <tr>
-                        <td align="right"><span class="label">Имя:</span></td>
-                        <td><?= htmlspecialchars($name_text, ENT_QUOTES, 'UTF-8') ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php if ($age_text !== ''): ?>
-                    <tr>
-                        <td align="right"><span class="label">Возраст:</span></td>
-                        <td><?= htmlspecialchars($age_text, ENT_QUOTES, 'UTF-8') ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php if ($about_text !== ''): ?>
-                    <tr>
-                        <td align="right" valign="top"><span class="label">Обо мне:</span></td>
-                        <td><?= nl2br(htmlspecialchars($about_text, ENT_QUOTES, 'UTF-8')) ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php if ($website_raw !== ''): ?>
-                    <tr>
-                        <td align="right"><span class="label">Веб-сайт:</span></td>
-                        <td><a href="<?= htmlspecialchars($website_href, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($website_raw, ENT_QUOTES, 'UTF-8') ?></a></td>
-                    </tr>
-                    <?php endif; ?>
-                    <tr>
-                        <td colspan="2">&nbsp;</td>
-                    </tr>
-
-                    <?php if (!empty($user_data['hometown'])): ?>
-                    <tr>
-                        <td align="right"><span class="label">Родной город:</span></td>
-                        <td><?= htmlspecialchars((string)$user_data['hometown'], ENT_QUOTES, 'UTF-8') ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php if (!empty($user_data['city'])): ?>
-                    <tr>
-                        <td align="right"><span class="label">Текущий город:</span></td>
-                        <td><?= htmlspecialchars((string)$user_data['city'], ENT_QUOTES, 'UTF-8') ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <?php if (!empty($user_data['country'])): ?>
-                    <tr>
-                        <td align="right"><span class="label">Текущая страна:</span></td>
-                        <td><?= htmlspecialchars((string)$user_data['country'], ENT_QUOTES, 'UTF-8') ?></td>
-                    </tr>
-                    <?php endif; ?>
-                    <tr>
-                        <td colspan="2">&nbsp;</td>
-                    </tr>
-
-                    <tr>
-                        <td align="right"><span class="label">Последний вход:</span></td>
-                        <td><?= htmlspecialchars(ago_ru($last_login_time), ENT_QUOTES, 'UTF-8') ?></td>
-                    </tr>
-                    </tbody>
-                </table>
-            </td>
-
-            <td width="180">
-                <?= channel_sidebar_nav_html($user, 'profile', [
-                    'public' => $public_count,
-                    'private' => $private_count,
-                    'fav' => $fav_count,
-                    'friends' => $friends_count,
-                ]) ?>
-
-                <?php if ($latest_public): ?>
-                <table width="100%" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#CCCCCC" style="margin-bottom:10px;">
-                    <tr>
-                        <td><img src="img/box_login_tl.gif" width="5" height="5" alt=""></td>
-                        <td width="100%"><img src="img/pixel.gif" width="1" height="5" alt=""></td>
-                        <td><img src="img/box_login_tr.gif" width="5" height="5" alt=""></td>
-                    </tr>
-                    <tr>
-                        <td width="5" style="background-color:#CCCCCC;"><img src="img/pixel.gif" width="5" height="1" alt=""></td>
-                        <td>
-                            <div class="moduleTitleBar">
-                                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                                    <tr><td><div class="moduleTitle">Последнее видео</div></td></tr>
-                                </table>
-                            </div>
-                            <div class="moduleFeatured">
-                                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                                    <tr>
-                                        <td align="center">
-                                            <a href="video.php?id=<?= urlencode((string)($latest_public['public_id'] ?? $latest_public['id'])) ?>">
-                                                <img src="<?= htmlspecialchars((string)($latest_public['preview'] ?? 'img/no_videos_140.jpg'), ENT_QUOTES, 'UTF-8') ?>" class="moduleFeaturedThumb" width="120" height="90" alt="">
-                                            </a>
-                                            <div class="moduleFeaturedTitle">
-                                                <a href="video.php?id=<?= urlencode((string)($latest_public['public_id'] ?? $latest_public['id'])) ?>"><?= htmlspecialchars((string)($latest_public['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?></a>
-                                            </div>
-                                            <div class="moduleFeaturedDetails">
-                                                Добавлено: <?= htmlspecialchars(channel_video_rus_date_from_db($latest_public['time'] ?? null), ENT_QUOTES, 'UTF-8') ?><br>
-                                                от <a href="channel.php?user=<?= urlencode($user) ?>"><?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?></a>
-                                            </div>
-                                            <div class="moduleFeaturedDetails">Просмотров: <?= (int)($latest_public['views'] ?? 0) ?></div>
-                                        </td>
-                                    </tr>
-                                </table>
-                            </div>
-                        </td>
-                        <td width="5" style="background-color:#CCCCCC;"><img src="img/pixel.gif" width="5" height="1" alt=""></td>
-                    </tr>
-                    <tr>
-                        <td><img src="img/box_login_bl.gif" width="5" height="5" alt=""></td>
-                        <td><img src="img/pixel.gif" width="1" height="5" alt=""></td>
-                        <td><img src="img/box_login_br.gif" width="5" height="5" alt=""></td>
-                    </tr>
-                </table>
-                <?php endif; ?>
-
-                <div style="font-size:12px;color:#444;margin-top:10px;text-align:center;">
-                    <strong>Нравятся мои видео?</strong><br>
-                    <a href="rss.php?user=<?= urlencode($user) ?>">Подпишитесь на RSS.</a>
+   <div id="branded-page-header-container" class="ytg-wide banner-displayed-mode">
+    <div id="branded-page-header" class="ytg-wide">
+        <div id="channel-header-main">
+            <div class="upper-section clearfix">
+                <a href="/user/<?= urlencode($user) ?>">
+                    <span class="profile-thumb">
+                        <span class="centering-wrap">
+                            <?php
+                            $profile_icon = 'img/no_videos_140.jpg';
+                            if (!empty($user_data['profile_icon_custom'])) {
+                                $profile_icon = $user_data['profile_icon_custom'];
+                            } elseif (!empty($user_data['profile_icon']) && $user_data['profile_icon'] === '1') {
+                                $stmtIcon = $db->prepare("SELECT profile_icon_custom FROM users WHERE login = ?");
+                                $stmtIcon->execute([$user]);
+                                $customIcon = $stmtIcon->fetchColumn();
+                                if ($customIcon && is_string($customIcon) && $customIcon !== '') {
+                                    $profile_icon = $customIcon;
+                                }
+                            } else {
+                                $stmtLastVideo = $db->prepare("SELECT preview FROM videos WHERE user = ? AND private = 0 ORDER BY id DESC LIMIT 1");
+                                $stmtLastVideo->execute([$user]);
+                                $lastVideo = $stmtLastVideo->fetch(PDO::FETCH_ASSOC);
+                                if ($lastVideo && !empty($lastVideo['preview'])) {
+                                    $profile_icon = $lastVideo['preview'];
+                                }
+                            }
+                            ?>
+                            <img src="<?= htmlspecialchars($profile_icon, ENT_QUOTES, 'UTF-8') ?>" title="<?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?>">
+                        </span>
+                    </span>
+                </a>
+                <div class="upper-left-section">
+                    <h1><?= htmlspecialchars($user_data['username'] ?? $user, ENT_QUOTES, 'UTF-8') ?></h1>
                 </div>
-            </td>
-        </tr>
-    </table>
-    <?php
-    showFooter();
-    exit;
-}
 
-if ($user && isset($_GET['tab']) && $_GET['tab'] === 'videos') {
-  $public_only_view = isset($_GET['view']) && (string)$_GET['view'] === 'public';
-  $fr_count = 0;
-  try {
-    $stmtFr = $db->prepare("SELECT COUNT(*) FROM user_friends WHERE user = ?");
-    $stmtFr->execute([$user]);
-    $fr_count = (int)$stmtFr->fetchColumn();
-  } catch (Exception $e) {
-    $fr_count = 0;
-  }
-  $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-  $per_page = 5;
-  $offset = ($page - 1) * $per_page;
-  $is_owner = isset($_SESSION['user']) && $_SESSION['user'] === $user;
-  $show_owner_tools = $is_owner && !$public_only_view;
+                <div class="upper-left-section enable-fancy-subscribe-button">
+                    <?php
+                    $is_subscribed = false;
+                    if (isset($_SESSION['user']) && $_SESSION['user'] !== $user) {
+                        try {
+                            $stmtSub = $db->prepare("SELECT 1 FROM user_friends WHERE user = ? AND friend = ? LIMIT 1");
+                            $stmtSub->execute([$_SESSION['user'], $user]);
+                            $is_subscribed = (bool)$stmtSub->fetchColumn();
+                        } catch (Exception $e) {
+                            $is_subscribed = false;
+                        }
+                    }
+                    ?>
+                    <div class="yt-subscription-button-hovercard yt-uix-hovercard">
+                        <?php if (!isset($_SESSION['user'])): ?>
+                        <button onclick="window.location.href='login.php';" type="button" class="yt-subscription-button subscription-button-with-recommended-channels yt-uix-button yt-uix-button-subscription yt-uix-tooltip" role="button">
+                            <span class="yt-uix-button-icon-wrapper"><img class="yt-uix-button-icon yt-uix-button-icon-subscribe" src="img/pixel.gif" alt=""></span>
+                            <span class="yt-uix-button-content"><span class="subscribe-label">Subscribe</span></span>
+                        </button>
+                        <?php elseif ($is_subscribed): ?>
+                        <button onclick="window.location.href='/user/<?= urlencode($user) ?>&unsubscribe=1';" type="button" class="yt-subscription-button subscription-button-with-recommended-channels yt-uix-button yt-uix-button-subscribed yt-uix-tooltip" role="button">
+                            <span class="yt-uix-button-icon-wrapper"><img class="yt-uix-button-icon yt-uix-button-icon-subscribe" src="img/pixel.gif" alt=""></span>
+                            <span class="yt-uix-button-content"><span class="subscribed-label">Subscribed</span></span>
+                        </button>
+                        <?php else: ?>
+                        <form method="post" action="/user/<?= urlencode($user) ?>" style="display:inline; margin:0;">
+                            <input type="hidden" name="add_friend" value="1">
+                            <button type="submit" class="yt-subscription-button subscription-button-with-recommended-channels yt-uix-button yt-uix-button-subscription yt-uix-tooltip" role="button">
+                                <span class="yt-uix-button-icon-wrapper"><img class="yt-uix-button-icon yt-uix-button-icon-subscribe" src="img/pixel.gif" alt=""></span>
+                                <span class="yt-uix-button-content"><span class="subscribe-label">Subscribe</span></span>
+                            </button>
+                        </form>
+                        <?php endif; ?>
+                        <div class="yt-uix-hovercard-content hid">
+                            <p class="loading-spinner"><img src="img/pixel.gif" alt="">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="upper-right-section">
+                    <div class="header-stats">
+                        <?php
+                        $subscribers_count = 0;
+                        try {
+                            $stmtSubs = $db->prepare("SELECT COUNT(*) FROM user_friends WHERE friend = ?");
+                            $stmtSubs->execute([$user]);
+                            $subscribers_count = (int)$stmtSubs->fetchColumn();
+                        } catch (Exception $e) {
+                            $subscribers_count = 0;
+                        }
 
-  $profile_icon_mode = '0';
-  if ($is_owner) {
-    $profile_icon_mode = get_user_profile_icon_setting($user);
-  }
-  $can_choose_avatar = $is_owner && $profile_icon_mode === '1';
+                        $total_views = 0;
+                        try {
+                            $stmtViews = $db->prepare("SELECT SUM(views) AS total_views FROM videos WHERE user = ? AND private = 0");
+                            $stmtViews->execute([$user]);
+                            $total_views = (int)$stmtViews->fetchColumn();
+                        } catch (Exception $e) {
+                            $total_views = 0;
+                        }
 
-  if ($can_choose_avatar && !$public_only_view && isset($_GET['set_avatar'])) {
-    $set_id = intval($_GET['set_avatar']);
-    if ($set_id > 0) {
-      try {
-        $stmtSet = $db->prepare("SELECT preview FROM videos WHERE id = ? AND user = ?");
-        $stmtSet->execute([$set_id, $user]);
-        $vrow = $stmtSet->fetch(PDO::FETCH_ASSOC);
-        if ($vrow && !empty($vrow['preview'])) {
-          $stmtUpd = $db->prepare("UPDATE users SET profile_icon_custom = ? WHERE login = ?");
-          $stmtUpd->execute([$vrow['preview'], $user]);
-        }
-      } catch (Exception $e) {
-      }
-    }
-    $redir = 'channel.php?user=' . urlencode($user) . '&tab=videos';
-    if ($page > 1) {
-      $redir .= '&page=' . $page;
-    }
-    header('Location: ' . $redir);
-    exit;
-  }
+                        $video_count = 0;
+                        try {
+                            $stmtVidCnt = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0");
+                            $stmtVidCnt->execute([$user]);
+                            $video_count = (int)$stmtVidCnt->fetchColumn();
+                        } catch (Exception $e) {
+                            $video_count = 0;
+                        }
+                        ?>
+                        <div class="stat-entry">
+                            <span class="stat-value"><?= number_format($subscribers_count) ?></span>
+                            <span class="stat-name">subscribers</span>
+                        </div>
 
-  if ($show_owner_tools) {
-    $stmt = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ?");
-  } else {
-    $stmt = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0");
-  }
-  $stmt->execute([$user]);
-  $total = $stmt->fetchColumn();
-  $total_pages = ceil($total / $per_page);
-
-  if ($show_owner_tools) {
-    $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file, tags, private, original_filename FROM videos WHERE user = ? ORDER BY id DESC LIMIT $offset, $per_page");
-  } else {
-    $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file, tags, private, original_filename FROM videos WHERE user = ? AND private = 0 ORDER BY id DESC LIMIT $offset, $per_page");
-  }
-  $stmt->execute([$user]);
-  $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-  $my_tags = [];
-  $private_count = 0;
-  try {
-    $stmtTags = $db->prepare("SELECT tags FROM videos WHERE user = ? AND private = 0 ORDER BY id DESC");
-    $stmtTags->execute([$user]);
-    $tag_rows = $stmtTags->fetchAll(PDO::FETCH_ASSOC);
-    $tag_stats = [];
-    foreach ($tag_rows as $tr) {
-      $raw_tags = trim((string)($tr['tags'] ?? ''));
-      if ($raw_tags === '') continue;
-      $parts = preg_split('/\s+/', $raw_tags, -1, PREG_SPLIT_NO_EMPTY);
-      if (!is_array($parts)) continue;
-      foreach ($parts as $tag) {
-        $tag = trim((string)$tag);
-        if ($tag === '') continue;
-        $k = function_exists('mb_strtolower') ? mb_strtolower($tag, 'UTF-8') : strtolower($tag);
-        if (!isset($tag_stats[$k])) {
-          $tag_stats[$k] = ['tag' => $tag, 'count' => 0];
-        }
-        $tag_stats[$k]['count']++;
-      }
-    }
-    if (!empty($tag_stats)) {
-      usort($tag_stats, function ($a, $b) {
-        if ((int)$a['count'] === (int)$b['count']) {
-          return strcmp((string)$a['tag'], (string)$b['tag']);
-        }
-        return ((int)$b['count'] - (int)$a['count']);
-      });
-      $my_tags = array_slice($tag_stats, 0, 20);
-    }
-  } catch (Exception $e) {
-    $my_tags = [];
-  }
-  if ($is_owner) {
-    try {
-      $stmtPrivCount = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 1");
-      $stmtPrivCount->execute([$user]);
-      $private_count = (int)$stmtPrivCount->fetchColumn();
-    } catch (Exception $e) {
-      $private_count = 0;
-    }
-  }
-
-  $public_count_videos = 0;
-  try {
-    $stmtPubCnt = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0");
-    $stmtPubCnt->execute([$user]);
-    $public_count_videos = (int)$stmtPubCnt->fetchColumn();
-  } catch (Exception $e) {
-    $public_count_videos = 0;
-  }
-
-  if ($public_only_view) {
-    $sidebar_active = 'public';
-  } elseif ($show_owner_tools) {
-    $sidebar_active = 'private';
-  } else {
-    $sidebar_active = 'public';
-  }
-
-  showHeader(($public_only_view ? 'Публичные видео // ' . htmlspecialchars($user) : 'Мои видео '));
-    ?>
-  <link rel="stylesheet" href="img/styles.css" type="text/css">
-  <style>
-  .vfacets { margin: 5px 0 !important; }
-  .vtagLabel { font-size: 11px !important; color: #888 !important; display: inline !important; }
-  .vtagValue { display: inline !important; margin-left: 5px !important; }
-  .vtagValue .dg { color: #333 !important; text-decoration: underline !important; }
-  .vtagValue .dg:hover { color: #333 !important; text-decoration: underline !important; }
-  </style>
-<link rel="stylesheet" href="img/base.css" type="text/css">
-<link rel="stylesheet" href="img/watch.css" type="text/css">
-    <table width="790" align="center" cellpadding="0" cellspacing="0" border="0">
-    <tr valign="top">
-      <td style="padding-right: 15px;">
-        <table width="595" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#CCCCCC">
-          <tr>
-            <td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-            <td width="100%"><img src="img/pixel.gif" width="1" height="5"></td>
-            <td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-          </tr>
-          <tr>
-            <td><img src="img/pixel.gif" width="5" height="1"></td>
-            <td width="585">
-              <div class="moduleTitleBar">
-                <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td style="font-size:14px; font-weight:bold; color:#444; text-align:left; padding-left: 5px;  padding-bottom: 5px;">
-                      <?= $show_owner_tools ? 'Мои видео' : 'Публичные видео // '  . htmlspecialchars($user) ?>
-                    </td>
-                    <?php if (!$show_owner_tools || (int)$total > 0): ?>
-                    <td style="font-size:12px; font-weight:bold; color:#444; text-align:right; padding-right:5px; padding-bottom: 7px; white-space:nowrap;">
-                      Видео <?= ($offset + 1) ?>-<?= min($offset + $per_page, $total) ?> из <?= $total ?>
-                    </td>
+                        <div class="stat-entry">
+                            <span class="stat-value"><?= number_format($total_views) ?></span>
+                            <span class="stat-name">video views</span>
+                        </div>
+                    </div>
+                    <span class="valign-shim"></span>
+                </div>
+            </div>
+            <div class="channel-horizontal-menu clearfix">
+                <ul>
+                    <li class="<?= (!isset($_GET['tab']) || $_GET['tab'] === '' || $_GET['tab'] === 'featured') ? 'selected' : '' ?>">
+                        <a href="/user/<?= urlencode($user) ?>&tab=featured" class="gh-tab-100">Featured</a>
+                    </li>
+                    <li class="<?= (isset($_GET['tab']) && $_GET['tab'] === 'feed') ? 'selected' : '' ?>">
+                        <a href="/user/<?= urlencode($user) ?>&tab=feed" class="gh-tab-102">Feed</a>
+                    </li>
+                    <li class="<?= (isset($_GET['tab']) && $_GET['tab'] === 'videos') ? 'selected' : '' ?>">
+                        <a href="/user/<?= urlencode($user) ?>&tab=videos&view=public" class="gh-tab-101">Videos <span class="video-count">(<?= $video_count ?>)</span></a>
+                    </li>
+                    <li class="<?= (isset($_GET['tab']) && $_GET['tab'] === 'comments') ? 'selected' : '' ?>">
+                        <a href="/user/<?= urlencode($user) ?>&tab=comments" class="gh-tab-103">Comments</a>
+                    </li>
+                    <?php if (isset($_SESSION['user']) && $_SESSION['user'] === $user): ?>
+                    <li class="<?= (isset($_GET['tab']) && $_GET['tab'] === 'private') ? 'selected' : '' ?>">
+                        <a href="/user/<?= urlencode($user) ?>&tab=videos" class="gh-tab-104">Private Videos</a>
+                    </li>
                     <?php endif; ?>
-                  </tr>
-                </table>
-              </div>
-              <?php if (count($videos) == 0): ?>
-              <?php else: ?>
-				<script type="text/javascript">
-					function showDescMore(id) {
-						var s = document.getElementById ? document.getElementById(id+'-short') : document.all[id+'-short'];
-						var f = document.getElementById ? document.getElementById(id+'-full') : document.all[id+'-full'];
-						if (s && f) { s.style.display = 'none'; f.style.display = 'inline'; }
-						return false;
-					}
-					function showDescless(id) {
-						var s = document.getElementById ? document.getElementById(id+'-short') : document.all[id+'-short'];
-						var f = document.getElementById ? document.getElementById(id+'-full') : document.all[id+'-full'];
-						if (s && f) { f.style.display = 'none'; s.style.display = 'inline'; }
-						return false;
-					}
-				</script>
-                <?php foreach ($videos as $row): ?>
-                  <?php
-                  $vid_link = htmlspecialchars($row['public_id'] ?? $row['id']);
-                  $desc = htmlspecialchars($row['description']);
-                  $desc_short = mb_strlen($desc) > 30 ? mb_substr($desc, 0, 30) . '...' : $desc;
-                  $desc_id = 'desc_chan_' . $row['id'];
-                  $desc_full = nl2br($desc);
-                  $comments_count = 0;
-                  try {
-                      $stmtCc = $db->prepare("SELECT COUNT(*) FROM comments WHERE video_id = ?");
-                      $stmtCc->execute([$row['id']]);
-                      $comments_count = (int)$stmtCc->fetchColumn();
-                  } catch (Exception $e) {
-                      $comments_count = 0;
-                  }
-                  list($rc, $ra) = channel_get_rating_stats($db, $row['id']);
-                  ?>
-                  <div style="background-color:#DDD; background-image:url('img/table_results_bg.gif'); background-position:left top; background-repeat:repeat-x; border-bottom:1px dashed #999999; padding:10px;">
-                    <table width="565" cellpadding="0" cellspacing="0" border="0">
-                      <tr valign="top">
-                        <td width="120" valign="top"><a href="video.php?id=<?=$vid_link?>"><img src="<?=htmlspecialchars($row['preview'])?>" class="moduleFeaturedThumb" width="120" height="90" style="margin: 0px 2px 0px 0px; display:block;"></a></td>
-                        <td width="445" valign="top" style="padding-left:8px;">
-                          <?php if ($show_owner_tools): ?>
-                          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;"><tr valign="top">
-                          <td valign="top">
-                          <?php endif; ?>
-                          <div class="moduleEntryTitle">
-                            <a href="video.php?id=<?=$vid_link?>"><?=htmlspecialchars($row['title'])?></a>
-                          </div>
-                          <div class="moduleEntryDescription">
-                          <span id="<?= $desc_id ?>-short">
-                            <?= $desc_short ?><?php if (mb_strlen($desc) > 30): ?> <a href="#" onclick="return showDescMore('<?= $desc_id ?>');" style="color:#0033cc; font-size:11px;">(ещё)</a><?php endif; ?>
-                          </span>
-                          <span id="<?= $desc_id ?>-full" style="display:none;">
-                            <?= $desc_full ?> <a href="#" onclick="return showDescless('<?= $desc_id ?>');" style="color:#0033cc; font-size:11px;">(меньше)</a>
-                          </span>
-                          <?php if (!empty($row['tags'])): ?>
-                          <div class="vfacets">
-                              <div class="moduleEntryTags">Теги //
-                                <span class="vidTagsBegin-<?=$row['id']?>">
-                                      <?php
-                                      $tags = preg_split('/\s+/', trim($row['tags'] ?? ''), -1, PREG_SPLIT_NO_EMPTY);
-                                      $visible_tags = array_slice($tags, 0, 5);
-                                      $hidden_tags = array_slice($tags, 5);
-
-                                      foreach ($visible_tags as $tag):
-                                        $tag = trim($tag);
-                                        if (!empty($tag)):
-                                      ?>
-                                        <a href="results.php?search_type=tag&search_query=<?=urlencode($tag)?>"><?=htmlspecialchars($tag)?></a> :
-                                      <?php
-                                        endif;
-                                      endforeach;
-
-                                      if (!empty($hidden_tags)):
-                                      ?>
-                                      <span id="vidTagsRemain-<?=$row['id']?>" style="display: none;">
-                                        <?php foreach ($hidden_tags as $tag):
-                                          $tag = trim($tag);
-                                          if (!empty($tag)):
-                                        ?><a href="results.php?search_type=tag&search_query=<?=urlencode($tag)?>"><?=htmlspecialchars($tag)?></a> : <?php
-                                          endif;
-                                        endforeach;
-                                        ?></span>&nbsp;<span id="vidTagsMore-<?=$row['id']?>" class="smallText">(<a href="#" class="eLink" onclick="showInline('vidTagsRemain-<?=$row['id']?>'); hideInline('vidTagsMore-<?=$row['id']?>'); showInline('vidTagsLess-<?=$row['id']?>'); return false;">ещё</a>)</span><span id="vidTagsLess-<?=$row['id']?>" class="smallText" style="display: none;">(<a href="#" class="eLink" onclick="hideInline('vidTagsRemain-<?=$row['id']?>'); hideInline('vidTagsLess-<?=$row['id']?>'); showInline('vidTagsMore-<?=$row['id']?>'); return false;">меньше</a>)</span>
-                                      <?php endif; ?>
-                                  </span>
-                              </div>
-                          </div>
-                          <?php endif; ?>
-                          <div class="moduleEntryDetails">
-                            Добавлено: <?= time_ago(strtotime($row['time'])) ?> от <a href="channel.php?user=<?= htmlspecialchars($row['user']) ?>" style="color:#0033cc; text-decoration:underline;"><?= htmlspecialchars($row['user']) ?></a>
-                          </div>
-                          <div class="moduleEntryDetails">
-                            Время: <?=get_video_duration_fast($row['file'], $row['id'], $row['public_id'] ?? '')?> | Просмотров: <?= intval($row['views']) ?> | Комментариев: <?= intval($comments_count) ?>
-                          </div>
-                          <?= channel_render_avg_stars_html($ra, $rc) ?>
-                          </div>
-
-                          <?php if ($show_owner_tools): ?>
-                          </td>
-                          <td valign="top" width="133" style="padding-left:4px;">
-    <?php if (is_valid_video_public_id($row['public_id'] ?? '')): ?>
-    <button type="button" style="width:130px; display:block;margin-bottom:5px;font-size:11px" onclick="window.location.href='my_videos_edit.php?id=<?=urlencode((string)$row['public_id'])?>';">
-      Редактировать видео</button>
-    <?php endif; ?>
-    <?php if ($can_choose_avatar): ?>
-    <button type="button" style="width:130px; display:block;margin-bottom:5px;font-size:11px" onclick="window.location.href='channel.php?user=<?=urlencode($user)?>&tab=videos&set_avatar=<?=intval($row['id'])?><?php if ($page > 1): ?>&page=<?=$page?><?php endif; ?>';">
-      Сделать аватаром</button>
-    <?php endif; ?>
-                          </td>
-                          </tr>
-                          <?php endif; ?>
-                          <?php if ($show_owner_tools): ?>
-                          <tr>
-                          <td colspan="2">
-                          
-
-                          <div style="margin:5px 0;padding:0;height:0;font-size:1px;line-height:1px;border:0;border-bottom:1px dashed #999999;overflow:hidden;"></div>
-                          <?php
-                          $fn_disp = trim((string)($row['original_filename'] ?? ''));
-                          if ($fn_disp === '') {
-                              $fn_disp = (string)($row['file'] ?? '');
-                              $fn_disp = $fn_disp !== '' ? basename($fn_disp) : 'video.mp4';
-                          }
-                          $pid_share = (string)($row['public_id'] ?? '');
-                          $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-                          $host = (string)($_SERVER['HTTP_HOST'] ?? 'localhost');
-                          $script = (string)($_SERVER['SCRIPT_NAME'] ?? '');
-                          $dir = str_replace('\\', '/', dirname($script));
-                          if ($dir === '.' || $dir === '/') {
-                              $indexPath = '/';
-                              $videoPath = '/video.php';
-                          } else {
-                              $indexPath = rtrim($dir, '/') . '/';
-                              $videoPath = rtrim($dir, '/') . '/video.php';
-                          }
-                          if ($pid_share !== '' && preg_match('/^[A-Za-z0-9_-]{6,20}$/', $pid_share)) {
-                              $share_video_url = $scheme . '://' . $host . $indexPath . '?v=' . rawurlencode($pid_share);
-                          } else {
-                              $share_video_url = $scheme . '://' . $host . $videoPath . '?id=' . rawurlencode((string)($row['public_id'] ?? $row['id']));
-                          }
-                          ?>
-                          <div class="moduleEntryDetails">Файл: <?=htmlspecialchars($fn_disp)?>
-                            <div class="moduleEntryDetails">Статус: <?php if ($row['private'] == 0): ?> <span style="color:#24692A;font-weight:bold">Публичное видео</span> <?php else: ?> <span style="color:#8C172A;font-weight:bold">Приватное видео</span> <?php endif; ?></div>
-                            <input name="video_link" type="text" onclick="javascript:document.linkForm.video_link.focus();document.linkForm.video_link.select();" value="<?= htmlspecialchars($share_video_url, ENT_QUOTES, 'UTF-8') ?>" size="50" readonly="true" style="font-size: 10px; text-align: center;">
-                            <div class="formFieldInfo">Поделитесь этим видео с друзьями! Скопируйте и вставьте ссылку выше в Email или на сайт.</div>
-                          </div>
-                            
-                          
-                          </td>
-                          </tr>
-                          </table>
-                          <?php endif; ?>
-                        </td>
-                      </tr>
-                    </table>
-                  </div>
-                <?php endforeach; ?>
-              <?php endif; ?>
-              <?php if ($total_pages > 1): ?>
-                <div class="pagingDiv" style="margin: 0px 0 0px 0;">
-                  Стр.
-                  <?php
-                  $start_page = max(1, $page - 2);
-                  $end_page = min($total_pages, $page + 2);
-                  
-                  $vf = $public_only_view ? '&view=public' : '';
-                  if ($start_page > 1) {
-                      echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos'.$vf.'&page=1">1</a></span>';
-                      if ($start_page > 2) echo ' ... ';
-                  }
-                  
-                  for ($i = $start_page; $i <= $end_page; $i++) {
-                      if ($i == $page) {
-                          echo '<span class="pagerCurrent">'.$i.'</span>';
-                      } else {
-                          echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos'.$vf.'&page='.$i.'">'.$i.'</a></span>';
-                      }
-                  }
-                  
-                  if ($end_page < $total_pages) {
-                      if ($end_page < $total_pages - 1) echo ' ... ';
-                      echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos'.$vf.'&page='.$total_pages.'">'.$total_pages.'</a></span>';
-                  }
-                  
-                  if ($page < $total_pages) {
-                      echo '<span class="pagerNotCurrent"><a href="?user='.urlencode($user).'&tab=videos'.$vf.'&page='.($page + 1).'">Далее</a></span>';
-                  }
-                  ?>
-                </div>
-              <?php endif; ?>
-            </td>
-            <td><img src="img/pixel.gif" width="5" height="1"></td>
-          </tr>
-          <tr>
-            <td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-            <td><img src="img/pixel.gif" width="1" height="5"></td>
-            <td><img src="img/box_login_br.gif" width="5" height="5"></td>
-          </tr>
-        </table>
-      </td>
-      <td width="180">
-        <?php if ($show_owner_tools): ?>
-          <div style="font-weight: bold; color: #333; margin: 0px 0px 5px 0px;">Мои теги:</div>
-          <?php if (!empty($my_tags)): ?>
-            <?php foreach ($my_tags as $rt): ?>
-              <div style="padding: 0px 0px 4px 0px; color: #999;">&raquo; <a href="results.php?search_type=tag&amp;search_query=<?=urlencode((string)$rt['tag'])?>"><?=htmlspecialchars((string)$rt['tag'])?></a></div>
-            <?php endforeach; ?>
-          <?php else: ?>
-            <div style="font-size:12px;color:#666;">Тегов пока нет.</div>
-          <?php endif; ?>
-        <?php else: ?>
-          <?= channel_sidebar_nav_html($user, $sidebar_active, [
-              'public' => $public_count_videos,
-              'private' => $is_owner ? $private_count : 0,
-              'fav' => $fav_count,
-              'friends' => $fr_count,
-          ]) ?>
-        <?php endif; ?>
-      </td>
-    </tr>
-    </table>
-    <?php
-    showFooter();
-    exit;
-}
-
-if (!$user && (!isset($_GET['tab']) || $_GET['tab'] === '')) {
-    $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-    $per_page = 20;
-    $offset = ($page - 1) * $per_page;
-    $show_recs_block = true;
-    if (isset($_SESSION['user'])) {
-        try {
-            $stRecsEnabled = $db->prepare("SELECT recs_enabled FROM users WHERE login = ? LIMIT 1");
-            $stRecsEnabled->execute([$_SESSION['user']]);
-            $recsEnabledVal = $stRecsEnabled->fetchColumn();
-            if ($recsEnabledVal !== false && (string)$recsEnabledVal === '0') {
-                $show_recs_block = false;
-            }
-        } catch (Exception $e) {
-            $show_recs_block = true;
-        }
-    }
-    
-    $filter = isset($_GET['filter']) ? $_GET['filter'] : 'recent';
-    if ($filter === 'recs' && !(isset($_SESSION['user']) && $show_recs_block)) {
-        $filter = 'recent';
-    }
-    $filter_name = 'Последние';
-    
-    switch ($filter) {
-        case 'recent':
-            $filter_name = 'Последние';
-            break;
-        case 'viewed':
-            $filter_name = 'Популярные';
-            break;
-        case 'rated':
-            $filter_name = 'Высоко оцененные';
-            break;
-        case 'discussed':
-            $filter_name = 'Обсуждаемые';
-            break;
-        case 'favorites':
-            $filter_name = 'Избранные';
-            break;
-        case 'random':
-            $filter_name = 'Случайные';
-            break;
-        case 'linked':
-            $filter_name = 'Ссылки';
-            break;
-        case 'featured':
-            $filter_name = 'Рекомендуемые';
-            break;
-        case 'recs':
-            $filter_name = 'Рекомендованные';
-            break;
-    }
-    
-    $order_by = 'id DESC';
-    
-    switch ($filter) {
-        case 'recent':
-            $order_by = 'id DESC';
-            break;
-        case 'viewed':
-            $order_by = 'views DESC, id DESC';
-            break;
-
-        case 'rated':
-            $stmt = $db->prepare("SELECT v.id, v.public_id, v.title, v.preview, v.description, v.time, v.views, v.user, v.file, 
-                COALESCE(AVG(r.rating),0) AS avg_rating, 
-                COUNT(r.id) AS votes_count,
-                (COALESCE(AVG(r.rating),0) * COUNT(r.id)) / (1 + COUNT(r.id)) AS weighted_rating
-                FROM videos v
-                LEFT JOIN ratings r ON r.video_id = v.id
-                WHERE v.private = 0 AND NOT EXISTS (SELECT 1 FROM channel_moderation cm WHERE cm.user = v.user AND cm.shadow_banned = 1)
-                GROUP BY v.id
-                ORDER BY weighted_rating DESC, v.views DESC, v.id DESC");
-            $stmt->execute();
-            $all_videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-			
-            $total = count($all_videos);
-            $total_pages = ceil($total / $per_page);
-            $videos = array_slice($all_videos, $offset, $per_page);
-            break;
-
-        case 'discussed':
-            $stmt = $db->prepare("
-                SELECT v.id, v.public_id, v.title, v.preview, v.description, v.time, v.views, v.user, v.file,
-                       COALESCE(cc.cnt, 0) AS comments_count
-                FROM videos v
-                LEFT JOIN (
-                    SELECT video_id, COUNT(*) AS cnt
-                    FROM comments
-                    GROUP BY video_id
-                ) cc ON cc.video_id = v.id
-                WHERE v.private = 0 AND NOT EXISTS (SELECT 1 FROM channel_moderation cm WHERE cm.user = v.user AND cm.shadow_banned = 1)
-                ORDER BY comments_count DESC, v.views DESC, v.id DESC
-            ");
-            $stmt->execute();
-            $all_videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            $total = count($all_videos);
-            $total_pages = ceil($total / $per_page);
-            $videos = array_slice($all_videos, $offset, $per_page);
-            break;
-        case 'favorites':
-            $stmt = $db->prepare("
-                SELECT v.id, v.public_id, v.title, v.preview, v.description, v.time, v.views, v.user, v.file,
-                       COALESCE(fv.cnt, 0) AS favorites_count
-                FROM videos v
-                LEFT JOIN (
-                    SELECT video_id, COUNT(*) AS cnt
-                    FROM user_favourites
-                    GROUP BY video_id
-                ) fv ON fv.video_id = v.id
-                WHERE v.private = 0 AND NOT EXISTS (SELECT 1 FROM channel_moderation cm WHERE cm.user = v.user AND cm.shadow_banned = 1)
-                ORDER BY favorites_count DESC, v.views DESC, v.id DESC
-            ");
-            $stmt->execute();
-            $all_videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-            $total = count($all_videos);
-            $total_pages = ceil($total / $per_page);
-            $videos = array_slice($all_videos, $offset, $per_page);
-            break;
-
-        case 'random':
-            $stmt = $db->prepare("SELECT COUNT(*) FROM videos WHERE private = 0 AND " . visible_video_sql_condition('videos', 'user'));
-            $stmt->execute();
-            $total = $stmt->fetchColumn();
-            $total_pages = ceil($total / $per_page);
-            $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file FROM videos WHERE private = 0 AND " . visible_video_sql_condition('videos', 'user') . " ORDER BY RANDOM() LIMIT $offset, $per_page");
-            $stmt->execute();
-            $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            break;
-        case 'recs':
-            $videos = [];
-            try {
-                $viewerUser = isset($_SESSION['user']) ? (string)$_SESSION['user'] : null;
-                $viewerIp = isset($_SERVER['REMOTE_ADDR']) ? (string)$_SERVER['REMOTE_ADDR'] : '';
-                $all_recs = recs_get_home_recommendations($db, $viewerUser, $viewerIp, 100);
-                $total = count($all_recs);
-                $total_pages = 1;
-                $videos = $all_recs;
-            } catch (Exception $e) {
-                $videos = [];
-                $total = 0;
-                $total_pages = 0;
-            }
-            break;
-    }
-    
-    if ($filter !== 'discussed' && $filter !== 'favorites' && $filter !== 'rated' && $filter !== 'random' && $filter !== 'recs') {
-        $stmt = $db->prepare("SELECT COUNT(*) FROM videos WHERE private = 0 AND " . visible_video_sql_condition('videos', 'user'));
-        $stmt->execute();
-        $total = $stmt->fetchColumn();
-        $total_pages = ceil($total / $per_page);
-        
-        $stmt = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file FROM videos WHERE private = 0 AND " . visible_video_sql_condition('videos', 'user') . " ORDER BY $order_by LIMIT $offset, $per_page");
-        $stmt->execute();
-        $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-    ?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/1999/REC-html401-19991224/loose.dtd">
-<html>
-<head>
-<meta http-equiv="content-type" content="text/html; charset=UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= $filter_name ?> видео - RetroShow</title>
-<link rel="stylesheet" href="img/styles.css" type="text/css">
-<link rel="stylesheet" href="img/base.css" type="text/css">
-<link rel="stylesheet" href="img/watch.css" type="text/css">
-<link rel="icon" href="favicon.ico" type="image/x-icon">
-<link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
-<meta name="description" content="Share your videos with friends and family">
-<meta name="keywords" content="video,sharing,camera phone,video phone">
-<script type="text/javascript" src="img/ui_ets.js"></script>
-<script language="javascript" type="text/javascript">
-onLoadFunctionList = new Array();
-function performOnLoadFunctions() {
-    for (var i in onLoadFunctionList) {
-        onLoadFunctionList[i]();
-    }
-}
-</script>
-<!--[if lt IE 6]>
-<style type="text/css">
-#ratingMessage { display:none; }
-</style>
-<![endif]-->
-<!--[if lte IE 6]>
-<style type="text/css">
-html, body {
-	margin: 10px !important;
-	padding: 0 !important;
-}
-.showingTable {
-	padding: 8px 6px !important;
-	margin: 0 !important;
-}
-.showingTable td {
-	padding-top: 4px !important;
-	padding-bottom: 4px !important;
-    padding-left: 6px !important;
-	line-height: 16px !important;
-	vertical-align: middle !important;
-}
-</style>
-<![endif]-->
-</head>
-<body onload="performOnLoadFunctions();">
-<table width="800" cellpadding="0" cellspacing="0" border="0" align="center" style="margin-top:0; border-collapse:collapse;">
-<tr><td bgcolor="#FFFFFF" style="padding-bottom: 25px;">
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-<tr valign="top">
-<?php
-$__ch_logo = (!empty($_SESSION['user']) && isset($db) && $db instanceof PDO) ? user_header_logo_src($db, (string)$_SESSION['user']) : 'img/logo_sm.gif';
-$__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
-?>
-<td width="130" rowspan="2" style="padding: 0px 5px 5px 5px;"><a href="index.php"><img src="<?= htmlspecialchars($__ch_logo, ENT_QUOTES, 'UTF-8') ?>" width="120" height="48" alt="<?= htmlspecialchars($__ch_alt, ENT_QUOTES, 'UTF-8') ?>" border="0" style="vertical-align: middle; "></a></td>
-<td valign="top">
-<table width="670" cellpadding="0" cellspacing="0" border="0">
-<tr valign="top">
-<td style="padding: 0px 5px 0px 5px; font-style: italic;">Загружайте и делитесь видео по всему миру!</td>
-<td align="right">
-<table cellpadding="0" cellspacing="0" border="0"><tr>
-    <?php if (!isset($_SESSION['user'])): ?>
-<td><a href="register.php"><strong>Регистрация</strong></a></td>
-<td style="padding: 0px 5px 0px 5px;">|</td>
-<td><a href="login.php">Вход</a></td>
-<td style="padding: 0px 5px 0px 5px;">|</td>
-<td style="padding-right: 5px;"><a href="help.php">Помощь</a></td>
-    <?php else: ?>
-<?php $mail_unread = count_unread_mail($db, $_SESSION['user']); $mail_icon = $mail_unread > 0 ? 'img/mail_unread.gif' : 'img/mail.gif'; ?>
-<td>Привет, <a href="channel.php?user=<?=urlencode($_SESSION['user'])?>"><?=htmlspecialchars($_SESSION['user'])?></a>!&nbsp;&nbsp;&nbsp;<a href="my_messages.php"><img src="<?= htmlspecialchars($mail_icon, ENT_QUOTES, 'UTF-8') ?>" id="mailico" border="0" alt=""></a>&nbsp;(<a href="my_messages.php"><?= (int) $mail_unread ?></a>)</td>					
-							<td class="myAccountContainer" style="padding: 0px 0px 0px 5px;">|&nbsp;
-							<?php $admins = @unserialize(RETROSHOW_ADMINS); if (in_array($_SESSION['user'], $admins, true)) {?>
-								<td><a href="admin.php" style="font-weight: bold;color: #24692A">Админ-панель</a></td>
-								<td style="padding: 0px 5px 0px 5px;">|</td>
-							<?php } ?>
-							<td><a href="logout.php">Выйти</a></td>
-							<td style="padding: 0px 5px 0px 5px;">|</td>
-							<td style="padding-right: 5px;"><a href="help.php">Помощь</a></td>
-							
-    <?php endif; ?>
-</tr></table>
-</td></tr></table>
-</td></tr>
-<tr valign="bottom">
-		<td>
-		
-		<table cellpadding="0" cellspacing="0" border="0">
-			<tbody><tr>
-				<?php
-				$current_script = strtolower(basename($_SERVER['SCRIPT_NAME']));
-				$tabs = [
-					['scripts' => ['index.php'], 'label' => 'Главная', 'href' => 'index.php'],
-					['scripts' => ['channel.php', 'favourites.php', 'friends.php', 'results.php', 'video.php'], 'label' => 'Смотреть&nbsp;видео', 'href' => 'channel.php'],
-					['scripts' => ['upload.php'], 'label' => 'Загрузить&nbsp;видео', 'href' => 'upload.php'],
-					['scripts' => ['my_friends_invite.php'], 'label' => 'Пригласить&nbsp;друзей', 'href' => 'my_friends_invite.php'],
-				];
-				$found = false;
-				foreach ($tabs as $t) {
-					if (in_array($current_script, $t['scripts'], true)) {
-						$found = true;
-						break;
-					}
-				}
-				if (!$found) {
-					$current_script = 'index.php';
-				}
-				foreach ($tabs as $idx => $t):
-					$is_active = in_array($current_script, $t['scripts'], true);
-					$ml = ($idx === 0) ? 5 : 0;
-					$tab_style = $is_active
-						? 'background-color: #DDDDDD; margin: 5px 2px 0px ' . $ml . 'px; border-bottom: 1px solid #DDDDDD;'
-						: 'background-color: #BECEEE; margin: 5px 2px 1px ' . $ml . 'px; border-bottom: none;';
-				?>
-				<td>
-					<table style="<?= $tab_style ?>" cellpadding="0" cellspacing="0" border="0">
-						<tbody><tr>
-							<td><img src="/img/box_login_tl.gif" width="5" height="5"></td>
-							<td><img src="/img/pixel.gif" width="1" height="5"></td>
-							<td><img src="/img/box_login_tr.gif" width="5" height="5"></td>
-						</tr>
-						<tr>
-							<td><img src="/img/pixel.gif" width="5" height="1"></td>
-							<td style="padding: 0px 20px 5px 20px; font-size: 13px; font-weight: bold;">
-								<a href="<?= htmlspecialchars($t['href'], ENT_QUOTES, 'UTF-8') ?>"><?= $t['label'] ?></a>
-							</td>
-							<td><img src="/img/pixel.gif" width="5" height="1"></td>
-						</tr>
-					</tbody></table>
-				</td>
-				<?php endforeach; ?>
-			</tr></tbody>
-		</table>
-</td>
-	</tr>
-</table>
-<?php if (session_status() == PHP_SESSION_NONE) session_start(); ?>
-<table align="center" width="800" bgcolor="#DDDDDD" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 10px;">
-<tr>
-<td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-<td><img src="img/pixel.gif" width="1" height="5"></td>
-<td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-</tr>
-<tr>
-<td><img src="img/pixel.gif" width="5" height="1"></td>
-<td width="790" align="center" style="padding: 2px;">
-<table cellpadding="0" cellspacing="0" border="0">
-<tr>
-<?php
-$filters = [
-    'recent' => 'Последние',
-    'viewed' => 'Популярные', 
-    'rated' => 'Высоко оцененные',
-    'discussed' => 'Обсуждаемые',
-    'favorites' => 'Избранные',
-    'random' => 'Случайные',
-];
-
-if (isset($_SESSION['user']) && $show_recs_block):
-    $filters['recs'] = 'Для вас';
-endif;
-
-$first = true;
-foreach ($filters as $filter_key => $filter_label) {
-    if (!$first) {
-        echo '<td style="padding: 0px 10px 0px 10px;">|</td>';
-    }
-    $is_active = ($filter === $filter_key);
-    echo '<td style="  ">';
-    if ($is_active) {
-        echo '<b><a href="channel.php?filter=' . $filter_key . '">' . $filter_label . '</a></b>';
-    } else {
-        echo '<a href="channel.php?filter=' . $filter_key . '">' . $filter_label . '</a>';
-    }
-    echo '</td>';
-    $first = false;
-}
-?>
-
-
-</tr>
-</table>
-</td>
-<td><img src="img/pixel.gif" width="5" height="1"></td>
-</tr>
-<tr>
-<td style="border-bottom: 1px solid #FFFFFF"><img src="img/box_login_bl.gif" width="5" height="5"></td>
-<td style="border-bottom: 1px solid #BBBBBB"><img src="img/pixel.gif" width="1" height="5"></td>
-<td style="border-bottom: 1px solid #FFFFFF"><img src="img/box_login_br.gif" width="5" height="5"></td>
-</tr>
-</table>
-
-<form name="searchForm" id="searchForm" method="GET" action="results.php" style="margin: 0; padding: 0;">
-<table align="center" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 10px;">
-	<tbody><tr>
-		<td style="padding-right: 5px;"><input tabindex="1" type="text" value="<?=htmlspecialchars($_GET['search_query'] ?? '')?>" name="search_query" maxlength="128" style="color:#ff3333; font-size: 12px; width: 293px;"></td>
-		<td><input type="submit" value="Искать видео"></td>
-	</tr></tbody></table>
-</form>
-
-<script language="javascript">
-	onLoadFunctionList.push(function () { document.searchForm.search_query.focus(); });
-</script>
-
-	<table width="770" align="center" cellpadding="0" cellspacing="0" border="0">
-	<tr valign="top">
-	<td style="padding-right: 15px;">
-		<table width="770" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#CCCCCC">
-		<tr>
-			<td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-			<td width="100%"><img src="img/pixel.gif" width="1" height="5"></td>
-			<td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-		</tr>
-		<tr>
-			<td><img src="img/pixel.gif" width="5" height="1"></td>
-			<td width="760" style="background-color:#DDD; background-image:url('img/table_results_bg.gif'); background-position:left top; background-repeat:repeat-x;">
-			
-			<div class="moduleTitleBar">
-				<table width="100%" cellpadding="0" cellspacing="0" border="0">
-					<tr>
-						<td style="font-size:14px; font-weight:bold; color:#444; text-align:left; padding-left: 5px;  padding-bottom: 5px;"><?= $filter_name ?> видео</td>
-						<td style="font-size:12px; font-weight:bold; color:#444; text-align:right; padding-right:5px; padding-bottom: 7px; white-space:nowrap;">
-							Видео <?= ($offset + 1) ?>-<?= min($offset + $per_page, $total) ?> из <?= $total ?>
-						</td>
-					</tr>
-				</table>
-			</div>
-      <div style="padding: 0 5px 0 5px;">
-
-			<?php if (empty($videos)): ?>
-			<?php else: ?>
-				<table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding: 0 0 10px 0;">
-				<?php
-				$i = 0;
-				foreach ($videos as $video):
-					if ($i % 5 == 0) echo '<tr valign="top">';
-					list($rc, $ra) = channel_get_rating_stats($db, $video['id']);
-					$card_comments = isset($video['comments_count']) ? (int)$video['comments_count'] : 0;
-					if ($card_comments <= 0) {
-						try {
-							$stCardCc = $db->prepare("SELECT COUNT(*) FROM comments WHERE video_id = ?");
-							$stCardCc->execute([(int)$video['id']]);
-							$card_comments = (int)$stCardCc->fetchColumn();
-						} catch (Exception $e) {
-							$card_comments = 0;
-						}
-					}
-					$title_display = mb_strlen($video['title']) > 20 ? mb_substr($video['title'], 0, 22) . '...' : $video['title'];
-				?>
-					<td width="20%" style="padding: 2px; vertical-align: top;">
-						<div style="padding-left: 4px; padding-right: 4px; padding-bottom: 0px;">
-							<div class="moduleFeaturedThumb" style="float: left; margin: 0px;">
-								<a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $video['id'])?>"><img src="<?=htmlspecialchars($video['preview'])?>" width="120" height="90" border="0" style="display: block;"></a>
-							</div>
-							<div class="moduleFeaturedTitle" style="text-align:center; padding-top: 6px; clear: left;">
-								<a href="video.php?id=<?=htmlspecialchars($video['public_id'] ?? $video['id'])?>" style="color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($title_display)?></a>
-							</div>
-							<div class="moduleFeaturedDetails" style="text-align:center; clear: left;">
-								Добавлено: <?=time_ago(strtotime($video['time']))?><br>
-								от <a href="channel.php?user=<?=urlencode($video['user'])?>" style="color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($video['user'])?></a><br>
-								Просмотров: <?=intval($video['views'])?> | Комм. <?=intval($card_comments)?>
-                </div>
-                <?php if ($ra > 0): ?>
-                  <center><?= channel_render_avg_stars_html($ra, $rc, false) ?></center>
-                <?php endif; ?>
-							
-						</div>
-					</td>
-				<?php
-					$i++;
-					if ($i % 5 == 0) echo '</tr>';
-				endforeach;
-				if ($i % 5 != 0) {
-					for ($j = $i % 5; $j < 5; $j++) echo '<td width="20%"></td>';
-					echo '</tr>';
-				}
-				?>
-				</table>
+                </ul>
+                <form id="channel-search" action="results.php" method="GET">
+                    <input type="hidden" name="search_user" value="<?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?>">
+                    <input name="search_query" type="text" maxlength="100" class="search-field label-input-label" placeholder="Search Channel" value="<?= htmlspecialchars($_GET['search_query'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                    <button class="search-btn" type="submit">
+                        <span class="search-btn-content">Search</span>
+                    </button>
+                    <a class="search-dismiss-btn" href="/user/<?= urlencode($user) ?>">
+                        <span class="search-btn-content">Clear</span>
+                    </a>
+                </form>
+            </div>
         </div>
-
-				<?php if ($total_pages > 1): ?>
-				<div class="pagingDiv" style="background: #CCC; margin: 0px 0 0px 0; padding: 5px 0px; font-size: 13px; color: #333; font-weight: bold; text-align: right;">
-					Стр.
-					<?php
-					$start_page = max(1, $page - 2);
-					$end_page = min($total_pages, $page + 2);
-					$filter_param = 'filter=' . urlencode($filter) . '&';
-					if ($start_page > 1) {
-						echo '<span class="pagerNotCurrent" style="color: #03C; background-color: #CCC; padding: 1px 4px; border: 1px solid #999; margin-right: 5px; text-decoration: underline; cursor: pointer;"><a href="?' . $filter_param . 'page=1" style="color: #03C; text-decoration: underline;">1</a></span>';
-						if ($start_page > 2) echo ' ... ';
-					}
-					for ($pi = $start_page; $pi <= $end_page; $pi++) {
-						if ($pi == $page) {
-							echo '<span class="pagerCurrent" style="color: #333; background-color: #FFF; padding: 1px 4px; border: 1px solid #999; margin-right: 5px; cursor: pointer;">' . $pi . '</span>';
-						} else {
-							echo '<span class="pagerNotCurrent" style="color: #03C; background-color: #CCC; padding: 1px 4px; border: 1px solid #999; margin-right: 5px; text-decoration: underline; cursor: pointer;"><a href="?' . $filter_param . 'page=' . $pi . '" style="color: #03C; text-decoration: underline;">' . $pi . '</a></span>';
-						}
-					}
-					if ($end_page < $total_pages) {
-						if ($end_page < $total_pages - 1) echo ' ... ';
-						echo '<span class="pagerNotCurrent" style="color: #03C; background-color: #CCC; padding: 1px 4px; border: 1px solid #999; margin-right: 5px; text-decoration: underline; cursor: pointer;"><a href="?' . $filter_param . 'page=' . $total_pages . '" style="color: #03C; text-decoration: underline;">' . $total_pages . '</a></span>';
-					}
-					if ($page < $total_pages) {
-						echo '<span class="pagerNotCurrent" style="color: #03C; background-color: #CCC; padding: 1px 4px; border: 1px solid #999; margin-right: 5px; text-decoration: underline; cursor: pointer;"><a href="?' . $filter_param . 'page=' . ($page + 1) . '" style="color: #03C; text-decoration: underline;">Далее</a></span>';
-					}
-					?>
-				</div>
-				<?php endif; ?>
-			<?php endif; ?>
-			</td>
-			<td><img src="img/pixel.gif" width="5" height="1"></td>
-		</tr>
-		<tr>
-			<td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-			<td><img src="img/pixel.gif" width="1" height="5"></td>
-			<td><img src="img/box_login_br.gif" width="5" height="5"></td>
-		</tr>
-		</table>
-	</td>
-	</tr>
-	</table>
-	</td></tr></table>
-
-        <table cellpadding="0" cellspacing="0" border="0" width="100%">
-        <tbody>
-        <tr>
-            <td align="center" valign="middle" style="font-family: Arial, sans-serif; font-size: 12px; line-height: 16px; text-align:center;">
-                
-                <table cellpadding="0" cellspacing="0" border="0" width="400" align="center">
-                <tr>
-                    <td align="center">
-                        <a href="about.php?p=whats_new">Что нового?</a> |
-                        <a href="about.php">О сайте</a> | 
-                        <a href="http://github.com/tankwars92/RetroShow">Исходный код</a> | 
-                        <a href="http://downgrade-net.ru/">Downgrade Net</a>
-                    </td>
-                </tr>
-                <tr>
-                    <td style="height:2px; font-size:1px; line-height:1px;">&nbsp;</td>
-                </tr>
-                <tr>
-                    <td align="center">
-						<br>
-                        Copyright © 2026 RetroShow | 
-                        <a href="rss.php"><img src="img/rss.gif" width="36" height="14" border="0" style="vertical-align:text-top;"></a>
-                    </td>
-                </tr>
-                <tr>
-                    <td style="height:2px; font-size:1px; line-height:1px;">&nbsp;</td>
-                </tr>
-                <tr>
-                    <td align="center">
-						<br>
-                        <script src="//downgrade-net.ru/services/ring/ring.php"></script> 
-                        <img src="//downgrade-net.ru/services/counter/index.php?id=21" alt="Downgrade Counter" border="0">
-                    </td>
-                </tr>
-                </table>
-
-            </td>
-        </tr>
-        </tbody>
-        </table>
-</body>
-</html>
-
-<?php
-exit;
-}
-
-if ($user && isset($_GET['tab']) && $_GET['tab'] === 'comments' && isset($_GET['action']) && $_GET['action'] === 'new') {
-    if ($user_data && isset($user_data['profile_comm']) && $user_data['profile_comm'] === '2') {
-        header('Location: channel.php?user='.urlencode($user));
-        exit;
-    }
-    if (!isset($_SESSION['user'])) {
-        header('Location: channel.php?user='.urlencode($user));
-        exit;
-    }
-    $comment_error = '';
-    if (isset($_POST['submit_comment'])) {
-        $comment = trim($_POST['comment'] ?? '');
-        if ($comment === '') {
-            $comment_error = 'Комментарий не может быть пустым!';
-        } else {
-            $comment_clean = str_replace(["|", "\n", "\r"], [' ', ' ', ' '], $comment);
-            $db->prepare("INSERT INTO profile_comments (profile_user, user, text, time) VALUES (?, ?, ?, ?)")
-               ->execute([$user, $_SESSION['user'], $comment_clean, time()]);
-            $new_pc_id = (int) $db->lastInsertId();
-            log_event('comment_profile', [
-                'comment_id' => (int)$new_pc_id,
-                'profile_user' => (string)$user,
-                'author' => (string)$_SESSION['user'],
-            ]);
-            if ($user !== $_SESSION['user']) {
-                $snippet = function_exists('mb_strlen') && function_exists('mb_substr')
-                    ? (mb_strlen($comment_clean, 'UTF-8') > 120 ? mb_substr($comment_clean, 0, 120, 'UTF-8') . '...' : $comment_clean)
-                    : (strlen($comment_clean) > 120 ? substr($comment_clean, 0, 120) . '...' : $comment_clean);
-                $topic = 'Пользователь «' . $_SESSION['user'] . '» оставил комментарий на вашем канале.';
-                $body = $topic . "\n\n" . 'Текст:' . "\n" . $snippet;
-                add_mail($db, $user, 'system', $topic, $body, 'profile_comment', $new_pc_id, null, null, $user);
-            }
-            header('Location: channel.php?user='.urlencode($user).'&tab=comments');
-            exit;
-        }
-    }
-    showHeader('Оставить комментарий');
-    $now = time();
-?>
-<form method="post" action="channel.php?user=<?=urlencode($user)?>&tab=comments&action=new">
-<table width="550" align="center" cellpadding="0" cellspacing="0" border="1" style="border-collapse:collapse; margin-top:30px; border-color:#999999;">
-  <tr>
-    <td colspan="2" style="background:#999999; color:#fff; font-weight:bold; padding:3px;">Оставить новый комментарий</td>
-  </tr>
-  <tr>
-    <td width="110" style="background:#f8f8f8; text-align:right; padding:8px; border-right:1px solid #bbb; font-weight:bold; color:#666;">От:</td>
-    <td style="padding:8px;">
-      <table cellpadding="0" cellspacing="0" border="0"><tr>
-        <td><img src="<?= get_profile_icon($_SESSION['user'], get_user_profile_icon_setting($_SESSION['user'])) ?>" width="140" height="108" style="border:1px solid #bbb; background:#eee;">
-		<br>
-		<a href="channel.php?user=<?=htmlspecialchars($_SESSION['user'])?>" style="font-weight:bold; color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($_SESSION['user'])?></a>
-		<br>
-		<br>
-</td>
-      </tr><tr>
-
-      </tr></table>
-    </td>
-  </tr>
-  <tr>
-    <td style="background:#f8f8f8; text-align:right; padding:8px; border-right:1px solid #bbb; font-weight:bold; color:#666;">Дата:</td>
-    <td style="padding:8px; font-weight:bold; color:#666;">
-      <?=rus_date($now)?>, <?=date('H:i', $now)?>
-    </td>
-  </tr>
-  <tr>
-    <td style="background:#f8f8f8; text-align:right; padding:8px; border-right:1px solid #bbb; font-weight:bold; color:#666;">Текст:</td>
-    <td style="padding:8px;">
-      <textarea tabindex="2" maxlength="255" name="comment" cols="55" rows="30"></textarea>
-      <?php if ($comment_error): ?><div style="color:red; font-size:12px; margin-top:4px;"><?=htmlspecialchars($comment_error)?></div><?php endif; ?>
-    </td>
-  </tr>
-</form>
-</table>
-<center>
-	<br>
-	<input type="submit" name="submit_comment" value="Отправить комментарий" style="font-size:13px;">
-</center>
-<?php
-showFooter();
-exit;
-}
-
-if ($user && isset($_GET['tab']) && $_GET['tab'] === 'comments' && !isset($_GET['action'])) {
-    showHeader('Комментарии о пользователе');
-    $comments = [];
-    try {
-        $stmtPc = $db->prepare("SELECT time, user, text FROM profile_comments WHERE profile_user = ? ORDER BY time ASC, id ASC");
-        $stmtPc->execute([$user]);
-        $comments = $stmtPc->fetchAll(PDO::FETCH_ASSOC) ?: [];
-    } catch (Exception $e) {
-        $comments = [];
-    }
-
-	$fav_count = 0;
-	$comments_count = 0;
-	try {
-		$stmtFav = $db->prepare("SELECT COUNT(*) FROM user_favourites WHERE user = ?");
-		$stmtFav->execute([$user]);
-		$fav_count = (int)$stmtFav->fetchColumn();
-	} catch (Exception $e) {}
-	try {
-		$stmtPc2 = $db->prepare("SELECT COUNT(*) FROM profile_comments WHERE profile_user = ?");
-		$stmtPc2->execute([$user]);
-		$comments_count = (int)$stmtPc2->fetchColumn();
-	} catch (Exception $e) {}
-	
-	$stmt_total = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0");
-	$stmt_total->execute([$user]);
-	$total = $stmt_total->fetchColumn();
-
-	echo '<div style="padding:8px 0 12px 0; text-align:center; font-size:13px;">';
-	echo (!isset($_GET['tab']) || $_GET['tab'] == '') 
-		? '<b>Профиль</b>' : '<a href="channel.php?user='.urlencode($user).'">Профиль</a>';
-	echo ' | ';
-	echo (isset($_GET['tab']) && $_GET['tab'] === 'videos')
-		? '<b>Видео ('.$total.')</b>' : '<a href="channel.php?user='.urlencode($user).'&tab=videos&amp;view=public">Видео ('.$total.')</a>';
-	echo ' | ';
-	echo '<a href="favourites.php?user='.urlencode($user).'&from=channel">Избранное ('.$fav_count.')</a> | ';
-	$fr_count = 0;
-	try {
-		$stmtFr = $db->prepare("SELECT COUNT(*) FROM user_friends WHERE user = ?");
-		$stmtFr->execute([$user]);
-		$fr_count = (int)$stmtFr->fetchColumn();
-	} catch (Exception $e) {}
-	echo '<a href="friends.php?user='.urlencode($user).'">Друзья ('.$fr_count.')</a> | ';
-	echo (isset($_GET['tab']) && $_GET['tab'] === 'comments')
-		? '<b>Комментарии ('.$comments_count.')</b>' : '<a href="channel.php?user='.urlencode($user).'&tab=comments">Комментарии ('.$comments_count.')</a>';
-	echo '</div>';
-    ?>
-    <?php if (isset($_SESSION['user']) && $_SESSION['user'] === $user): ?>
-    <div style="width:550px; margin:0 auto 8px auto; text-align:right; font-size:12px;">
-      <a href="dl_comments.php?user=<?=urlencode($user)?>" style="color:#0033cc; text-decoration:underline;">Скачать комментарии (.txt)</a>
     </div>
-    <?php endif; ?>
-    <table width="550" align="center" cellpadding="0" cellspacing="0" border="1" bordercolor="#666666" style="border-collapse:collapse; border:1px solid #666666; border-color:#666666;">
-      <tr>
-        <td colspan="2" style="background:#999999; color:#fff; font-weight:bold; padding:3px; border-right:1px solid #666666;">
-          Комментарии <?=htmlspecialchars($user)?>
-        </td>
-      </tr>
-      <?php if ($user_data && isset($user_data['profile_comm']) && $user_data['profile_comm'] === '2'): ?>
-      <tr>
-        <td colspan="2" style="padding:5px; text-align:center; background:#F4F4F4; border-right:1px solid #666666;">Этот пользователь отключил возможность комментирования своего профиля.</td>
-      </tr>
-      <?php elseif (count($comments) == 0): ?>
-      <tr>
-        <td colspan="2" style="padding:20px; text-align:center; color:#888; border-right:1px solid #666666;">Нет комментариев.</td>
-      </tr>
-      <?php else: foreach (array_reverse($comments) as $c): ?>
-      <tr>
-        <td width="110" style="background:#f8f8f8; text-align:center; padding:8px; border-right:1px solid #666666;">
-          <a href="channel.php?user=<?=htmlspecialchars($c['user'])?>" style="font-weight:bold; color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($c['user'])?></a><br>
-          <?php $pi = get_user_profile_icon_setting($c['user']); $avatar = get_profile_icon($c['user'], $pi); ?>
-          <br><img src="<?= $avatar ?>" width="64" height="50" style="border:1px solid #666666; background:#eee;">
-        </td>
-        <td style="padding:8px; vertical-align:top; border-right:1px solid #666666;">
-          <div style="color:#888; font-size:13px;"><b><?=rus_date($c['time'])?></b></div>
-		  <br>
-          <div style="font-size:13px;color:#222;word-break:break-all;width:320px;"><?=channel_comment_body_html($c['text'] ?? '')?></div>
-        </td>
-      </tr>
-      <?php endforeach; endif; ?>
-      
-      <?php if ($user_data && isset($user_data['profile_comm']) && $user_data['profile_comm'] === '2'): ?>
+</div>
+    <div id="branded-page-body">
+        <div class="channel-tab-content channel-layout-two-column selected blogger-template">
+            <div class="tab-content-body">
+                <div class="primary-pane">
+                    <?php if ($latest_public): ?>
+                    <div class="channels-featured-video channel-module yt-uix-c3-module-container has-visible-edge">
+                        <div class="module-view featured-video-view-module">
+                            <div class="channels-video-player player-root" style="overflow: hidden;">
+                                <div class="player-container">
+                                    <div class="player-container">
+                                        <a href="watch?v=<?= urlencode((string)($latest_public['public_id'] ?? $latest_public['id'])) ?>">
+                                            <img src="<?= htmlspecialchars((string)($latest_public['preview'] ?? 'img/no_videos_140.jpg'), ENT_QUOTES, 'UTF-8') ?>" width="640" height="360" style="background:#000;">
+                                        </a>
+                                    </div>
+                                </div>
+                                <div class="player-actions-container">
+                                    <div class="player-actions-share"></div>
+                                    <div class="player-actions-close"><div class="player-actions-close-button"></div></div>
+                                </div>
+                            </div>
+                            <div class="channels-featured-video-details yt-tile-visible clearfix">
+                                <h3 class="title">
+                                    <a href="watch?v=<?= urlencode((string)($latest_public['public_id'] ?? $latest_public['id'])) ?>">
+                                        <?= htmlspecialchars((string)($latest_public['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                    </a>
+                                    <div class="view-count-and-actions">
+                                        <div class="view-count">
+                                            <span class="count"><?= (int)($latest_public['views'] ?? 0) ?></span> views
+                                        </div>
+                                    </div>
+                                </h3>
+                                <p class="channels-featured-video-metadata">
+                                    <span>by <?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?></span>
+                                    <span class="created-date"><?= time_ago(strtotime($latest_public['time'] ?? 'now')) ?></span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
 
-          <?php else: ?>
-            <tr>
-        <td colspan="2" style="padding:10px; background:#f8f8f8; text-align:center; border-right:1px solid #666666;">
-            <a href="channel.php?user=<?=urlencode($user)?>&tab=comments&action=new" style="color:#0033cc; text-decoration:underline;">Оставить комментарий</a> для <?=htmlspecialchars($user)?>.
-            <span style="color:#666; font-size:12px;">Публикуемые вами комментарии будут видны всем, кто просматривает профиль пользователя <?=htmlspecialchars($user)?>.</span>
-          <?php endif; ?>
-        </td>
-      </tr>
-    </table>
+                    <div class="single-playlist channel-module yt-uix-c3-module-container">
+                        <div class="module-view single-playlist-view-module">
+                            <div class="blogger-playall">
+                                <a class="yt-playall-link yt-playall-link-default" href="/user/<?= urlencode($user) ?>&tab=videos&view=public">
+                                    <img class="small-arrow" src="img/pixel.gif" alt="">
+                                    Play all
+                                </a>
+                            </div>
+                            <div class="playlist-info">
+                                <h2>Uploaded videos</h2>
+                                <span class="blogger-video-count">1-<?= min(10, $public_count) ?> of <?= $public_count ?></span>
+                                <div class="yt-horizontal-rule"><span class="first"></span><span class="second"></span><span class="third"></span></div>
+                            </div>
+                            <ul class="gh-single-playlist">
+                                <?php
+                                $stmt_videos = $db->prepare("SELECT id, public_id, title, preview, description, time, views, user, file, tags FROM videos WHERE user = ? AND private = 0 ORDER BY id DESC LIMIT 10");
+                                $stmt_videos->execute([$user]);
+                                $recent_videos = $stmt_videos->fetchAll(PDO::FETCH_ASSOC);
+                                foreach ($recent_videos as $video):
+                                    $comments_cnt = 0;
+                                    try {
+                                        $stCc = $db->prepare("SELECT COUNT(*) FROM comments WHERE video_id = ?");
+                                        $stCc->execute([$video['id']]);
+                                        $comments_cnt = (int)$stCc->fetchColumn();
+                                    } catch (Exception $e) {}
+                                ?>
+                                <li class="blogger-video">
+                                    <div class="video yt-tile-visible">
+                                        <a href="watch?v=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>">
+                                            <span class="ux-thumb-wrap contains-addto">
+                                                <span class="video-thumb ux-thumb yt-thumb-default-288">
+                                                    <span class="yt-thumb-clip">
+                                                        <span class="yt-thumb-clip-inner">
+                                                            <img src="<?= htmlspecialchars($video['preview'] ?? 'img/default.jpg') ?>" alt="Thumbnail" width="288">
+                                                            <span class="vertical-align"></span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                                <span class="video-time"><?= get_video_duration_fast($video['file'], $video['id'], $video['public_id'] ?? '') ?></span>
+                                            </span>
+                                            <span class="video-item-content">
+                                                <span class="video-overview">
+                                                    <span class="title video-title" title="<?= htmlspecialchars($video['title']) ?>"><?= htmlspecialchars($video['title']) ?></span>
+                                                </span>
+                                                <span class="video-details">
+                                                    <span class="yt-user-name video-owner" dir="ltr"><?= htmlspecialchars($video['user']) ?></span>
+                                                    <span class="video-view-count"><?= number_format($video['views']) ?> views</span>
+                                                    <span class="video-time-published"><?= time_ago(strtotime($video['time'])) ?></span>
+                                                    <span class="video-item-description"><?= htmlspecialchars(mb_substr($video['description'] ?? '', 0, 120)) ?>...</span>
+                                                </span>
+                                            </span>
+                                        </a>
+                                    </div>
+                                </li>
+                                <?php endforeach; ?>
+                                <?php if ($public_count > 10): ?>
+                                <li class="video">
+                                    <a href="/user/<?= urlencode($user) ?>&tab=videos&view=public" class="more-videos yt-uix-button yt-uix-button-default">
+                                        <span class="yt-uix-button-content">Load <?= min(10, $public_count - 10) ?> more videos</span>
+                                    </a>
+                                </li>
+                                <?php endif; ?>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="secondary-pane">
+                    <div class="user-profile channel-module yt-uix-c3-module-container">
+                        <div class="module-view profile-view-module">
+                            <h2>About <?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?></h2>
+                            <div class="section first">
+                                <div class="user-profile-item profile-description">
+                                    <div class="yt-uix-expander yt-uix-expander-collapsed yt-c3-expander">
+                                        <div class="yt-uix-expander-body">
+                                            <p><?= nl2br(htmlspecialchars($about_text ?: 'Нет описания', ENT_QUOTES, 'UTF-8')) ?></p>
+                                            <button type="button" class="yt-uix-expander-head yt-uix-button yt-uix-button-link" onclick=";return false;" role="button"><span class="yt-uix-button-content"> less <img alt="" src="img/pixel.gif"></span></button>
+                                        </div>
+                                        <div class="yt-uix-expander-collapsed-body">
+                                            <p><?= nl2br(htmlspecialchars(mb_substr($about_text ?: 'Нет описания', 0, 150), ENT_QUOTES, 'UTF-8')) ?>...</p>
+                                            <button type="button" class="yt-uix-expander-head yt-uix-button yt-uix-button-link" onclick=";return false;" role="button"><span class="yt-uix-button-content"> more <img alt="" src="img/pixel.gif"></span></button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php if ($website_raw !== ''): ?>
+                                <div class="user-profile-item">
+                                    <div class="yt-c3-profile-custom-url field-container">
+                                        <a href="<?= htmlspecialchars($website_href, ENT_QUOTES, 'UTF-8') ?>" rel="me nofollow" target="_blank">
+                                            <img src="img/globe.gif" class="favicon" alt="">
+                                            <span class="link-text"><?= htmlspecialchars($website_raw, ENT_QUOTES, 'UTF-8') ?></span>
+                                        </a>
+                                    </div>
+                                </div>
+                                <?php endif; ?>
+                                <hr class="yt-horizontal-rule">
+                            </div>
+                            <div class="section created-by-section">
+                                <div class="user-profile-item">by <span class="yt-user-name" dir="ltr"><?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?></span></div>
+                                <div class="user-profile-item">
+                                    <h5>Latest Activity</h5>
+                                    <span class="value"><?= rus_date($last_login_time) ?></span>
+                                </div>
+                                <div class="user-profile-item">
+                                    <h5>Date Joined</h5>
+                                    <span class="value"><?= rus_date($signup_time) ?></span>
+                                </div>
+                            </div>
+                            <div class="section">
+                                <?php if (!empty($user_data['country'])): ?>
+                                <div class="user-profile-item">
+                                    <h5>Country</h5>
+                                    <span class="value"><?= htmlspecialchars((string)$user_data['country'], ENT_QUOTES, 'UTF-8') ?></span>
+                                </div>
+                                <?php endif; ?>
+                                <hr class="yt-horizontal-rule">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="playlists-narrow channel-module yt-uix-c3-module-container">
+                        <div class="module-view gh-featured">
+                            <h2>Featured Playlists</h2>
+                            <div class="playlist yt-tile-visible yt-uix-tile">
+                                <a href="/user/<?= urlencode($user) ?>&tab=videos&view=public" class="play-all">
+                                    <span class="playlist-thumb-strip playlist-thumb-strip-252">
+                                        <span class="videos videos-4 horizontal-cutoff">
+                                            <?php
+                                            $thumb_videos = array_slice($recent_videos, 0, 4);
+                                            foreach ($thumb_videos as $tv):
+                                            ?>
+                                            <span class="clip"><span class="centering-offset"><span class="centering"><span class="ie7-vertical-align-hack">&nbsp;</span><img src="<?= htmlspecialchars($tv['preview'] ?? 'img/default.jpg') ?>" alt="" class="thumb"></span></span></span>
+                                            <?php endforeach; ?>
+                                        </span>
+                                        <span class="resting-overlay"><img src="img/play-icon-resting.png" class="play-button" alt="Play all"><span class="video-count-box"><?= $public_count ?> videos</span></span>
+                                        <span class="hover-overlay"><span class="play-all-container"><strong><img src="img/mini-play-all.png" alt="">Play all</strong></span></span>
+                                    </span>
+                                </a>
+                                <h3><a href="/user/<?= urlencode($user) ?>&tab=videos&view=public" class="yt-uix-tile-link">Uploaded videos</a></h3>
+                                <span class="playlist-author-attribution">by <?= htmlspecialchars($user, ENT_QUOTES, 'UTF-8') ?></span>
+                            </div>
+                            <a class="view-all-link" href="/user/<?= urlencode($user) ?>&tab=videos&view=public">view all <img src="img/pixel.gif" alt=""></a>
+                        </div>
+                    </div>
+
+                    <?php
+                    $featured_channels = [];
+                    try {
+                        $stmtFc = $db->prepare("SELECT friend FROM user_friends WHERE user = ? LIMIT 6");
+                        $stmtFc->execute([$user]);
+                        $featured_channels = $stmtFc->fetchAll(PDO::FETCH_COLUMN, 0) ?: [];
+                    } catch (Exception $e) {}
+                    if (!empty($featured_channels)):
+                    ?>
+                    <div class="channel-module other-channels yt-uix-c3-module-container other-channels-compact">
+                        <div class="module-view other-channels-view">
+                            <h2>Featured Channels</h2>
+                            <ul class="channel-summary-list">
+                                <?php foreach ($featured_channels as $fc):
+                                    $fc_data = null;
+                                    try {
+                                        $stFcData = $db->prepare("SELECT login FROM users WHERE login = ?");
+                                        $stFcData->execute([$fc]);
+                                        $fc_data = $stFcData->fetch(PDO::FETCH_ASSOC);
+                                    } catch (Exception $e) {}
+                                    if (!$fc_data) continue;
+                                    $fc_subscribers = 0;
+                                    try {
+                                        $stSubs = $db->prepare("SELECT COUNT(*) FROM user_friends WHERE friend = ?");
+                                        $stSubs->execute([$fc]);
+                                        $fc_subscribers = (int)$stSubs->fetchColumn();
+                                    } catch (Exception $e) {}
+                                ?>
+                                <li class="yt-tile-visible yt-uix-tile">
+                                    <div class="channel-summary clearfix channel-summary-compact">
+                                        <div class="channel-summary-thumb">
+                                            <span class="video-thumb ux-thumb yt-thumb-square-46">
+                                                <span class="yt-thumb-clip">
+                                                    <span class="yt-thumb-clip-inner">
+                                                        <img src="<?= get_profile_icon($fc, get_user_profile_icon_setting($fc)) ?>" alt="Thumbnail" width="46">
+                                                        <span class="vertical-align"></span>
+                                                    </span>
+                                                </span>
+                                            </span>
+                                        </div>
+                                        <div class="channel-summary-info">
+                                            <h3 class="channel-summary-title">
+                                                <a href="/user/<?= urlencode($fc) ?>" class="yt-uix-tile-link"><?= htmlspecialchars($fc, ENT_QUOTES, 'UTF-8') ?></a>
+                                            </h3>
+                                            <span class="subscriber-count"><strong><?= number_format($fc_subscribers) ?></strong> subscribers</span>
+                                        </div>
+                                    </div>
+                                </li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
     <?php
     showFooter();
     exit;
@@ -1635,10 +851,7 @@ if ($user && isset($_GET['tab']) && $_GET['tab'] === 'comments' && !isset($_GET[
 <tr><td bgcolor="#FFFFFF" style="padding-bottom: 25px;">
 <table width="100%" cellpadding="0" cellspacing="0" border="0">
 <tr valign="top">
-<?php
-$__ch_logo = (!empty($_SESSION['user']) && isset($db) && $db instanceof PDO) ? user_header_logo_src($db, (string)$_SESSION['user']) : 'img/logo_sm.gif';
-$__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
-?>
+
 <td width="130" rowspan="2" style="padding: 0px 5px 5px 5px;"><a href="index.php"><img src="<?= htmlspecialchars($__ch_logo, ENT_QUOTES, 'UTF-8') ?>" width="120" height="48" alt="<?= htmlspecialchars($__ch_alt, ENT_QUOTES, 'UTF-8') ?>" border="0" style="vertical-align: middle; "></a></td>
 <td valign="top">
 <table width="670" cellpadding="0" cellspacing="0" border="0">
@@ -1654,7 +867,7 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
 <td style="padding-right: 5px;"><a href="help.php">Помощь</a></td>
     <?php else: ?>
 <?php $mail_unread = count_unread_mail($db, $_SESSION['user']); $mail_icon = $mail_unread > 0 ? 'img/mail_unread.gif' : 'img/mail.gif'; ?>
-<td>Привет, <a href="channel.php?user=<?=urlencode($_SESSION['user'])?>"><?=htmlspecialchars($_SESSION['user'])?></a>!&nbsp;&nbsp;&nbsp;<a href="my_messages.php"><img src="<?= htmlspecialchars($mail_icon, ENT_QUOTES, 'UTF-8') ?>" id="mailico" border="0" alt=""></a>&nbsp;(<a href="my_messages.php"><?= (int) $mail_unread ?></a>)</td>					
+<td>Привет, <a href="/user/<?=urlencode($_SESSION['user'])?>"><?=htmlspecialchars($_SESSION['user'])?></a>!&nbsp;&nbsp;&nbsp;<a href="my_messages.php"><img src="<?= htmlspecialchars($mail_icon, ENT_QUOTES, 'UTF-8') ?>" id="mailico" border="0" alt=""></a>&nbsp;(<a href="my_messages.php"><?= (int) $mail_unread ?></a>)</td>					
 							<td class="myAccountContainer" style="padding: 0px 0px 0px 5px;">|&nbsp;
 							<?php $admins = @unserialize(RETROSHOW_ADMINS); if (in_array($_SESSION['user'], $admins, true)) {?>
 								<td><a href="admin.php" style="font-weight: bold;color: #24692A">Админ-панель</a></td>
@@ -1732,9 +945,9 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
 <table cellpadding="0" cellspacing="0" border="0">
 <tr>
 <td style="font-size: 10px;">&nbsp;</td>
-<td style="  "><a href="<?php if (isset($_SESSION['user'])) { echo 'channel.php?user=' . urlencode($_SESSION['user']) . '&tab=videos'; } else { echo 'login.php'; } ?>">Мои видео</a></td>
+<td style="  "><a href="<?php if (isset($_SESSION['user'])) { echo '/user/' . urlencode($_SESSION['user']) . '&tab=videos'; } else { echo 'login.php'; } ?>">Мои видео</a></td>
 <td style="padding: 0px 10px 0px 10px;">|</td>
-<td style="  "><a href="<?php if (isset($_SESSION['user'])) { echo 'channel.php?user=' . urlencode($_SESSION['user']); } else { echo 'login.php'; } ?>">Мой канал</a></td>
+<td style="  "><a href="<?php if (isset($_SESSION['user'])) { echo '/user/' . urlencode($_SESSION['user']); } else { echo 'login.php'; } ?>">Мой канал</a></td>
 <td style="padding: 0px 10px 0px 10px;">|</td>
 <td style="  "><a href="<?php if (isset($_SESSION['user'])) { echo 'favourites.php?user=' . urlencode($_SESSION['user']); } else { echo 'login.php'; } ?>">Избранное</a></td>
 <td style="padding: 0px 10px 0px 10px;">|</td>
@@ -1776,9 +989,9 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
         <div class="moduleEntry">
           <table width="565" cellpadding="0" cellspacing="0" border="0">
             <tr valign="top">
-              <td><a href="video.php?id=<?=htmlspecialchars($row['public_id'] ?? $row['id'])?>"><img src="<?=htmlspecialchars($row['preview'])?>" class="moduleEntryThumb" width="120" height="90"></a></td>
+              <td><a href="watch?v=<?=htmlspecialchars($row['public_id'] ?? $row['id'])?>"><img src="<?=htmlspecialchars($row['preview'])?>" class="moduleEntryThumb" width="120" height="90"></a></td>
               <td width="100%">
-                <div class="moduleEntryTitle"><a href="video.php?id=<?=htmlspecialchars($row['public_id'] ?? $row['id'])?>" style="color:#0033cc; text-decoration:none; font-size:15px; font-weight:bold;"><?=htmlspecialchars($row['title'])?></a></div>
+                <div class="moduleEntryTitle"><a href="watch?v=<?=htmlspecialchars($row['public_id'] ?? $row['id'])?>" style="color:#0033cc; text-decoration:none; font-size:15px; font-weight:bold;"><?=htmlspecialchars($row['title'])?></a></div>
                 <?php
                 $desc = htmlspecialchars($row['description']);
                 $desc_short = mb_strlen($desc) > 30 ? mb_substr($desc, 0, 30) . '...' : $desc;
@@ -1791,7 +1004,7 @@ $__ch_alt = ($__ch_logo === 'img/logo_sm_YT.gif') ? 'YouTube' : 'RetroShow';
                 <span id="<?= $desc_id ?>-full" style="display:none; font-size:12px; color:#222; margin:2px 0 2px 0;">
                   <?= $desc_full ?> <a href="#" onclick="return showDescless('<?= $desc_id ?>');" style="color:#0033cc; font-size:11px;">(меньше)</a>
                 </span>
-                <div class="moduleEntryDetails">Добавлено: <?=time_ago(strtotime($row['time']))?> пользователем <a href="channel.php?user=<?=urlencode($row['user'])?>" style="color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($row['user'])?></a></div>
+                <div class="moduleEntryDetails">Добавлено: <?=time_ago(strtotime($row['time']))?> пользователем <a href="/user/<?=urlencode($row['user'])?>" style="color:#0033cc; text-decoration:underline;"><?=htmlspecialchars($row['user'])?></a></div>
                 <div class="moduleEntryDetails">Просмотров: <?=intval($row['views'])?> | Комментариев: <?php
                   try {
                       $stmtCc = $db->prepare("SELECT COUNT(*) FROM comments WHERE video_id = ?");
@@ -1824,53 +1037,7 @@ function showDescless(id) {
 }
 </script>
 
-</td>
-<td><img src="img/pixel.gif" width="5" height="1"></td>
-			</tr>
-			<tr>
-				<td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_br.gif" width="5" height="5"></td>
-			</tr>
-		</tbody></table>
-		
-		</td>
-		<td width="180">
-		
-		<table width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFEEBB">
-			<tbody><tr>
-				<td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-			</tr>
-			<tr>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-				<td width="170">
-		
-								
-				<div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="register.php">Зарегистрируйтесь бесплатно!</a></div>
-				
-								
-				</td>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-			</tr>
-			<tr>
-				<td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_br.gif" width="5" height="5"></td>
-			</tr>
-		</tbody></table>
-		
-		</td>
-	</tr>
-</tbody></table>
 
-<table cellpadding="10" cellspacing="0" border="0" align="center">
-<tr>
-<td align="center" valign="center"><span class="footer"><a href="about.php?p=whats_new">Что нового?</a> | <a href="about.php">О сайте</a> | <a href="http://github.com/tankwars92/retroshow">Исходный код</a> | <a href="http://downgrade-net.ru/">Downgrade Net</a>
-<br><br>Copyright © 2026 RetroShow | <a href="rss.php"><img src="img/rss.gif" width="36" height="14" border="0" style="vertical-align: text-top;"></a></span></td>
-</tr>
-</table>
 
 </body></html>
 

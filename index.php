@@ -204,7 +204,6 @@ function get_home_rating_stats($db, $video_id) {
     return [$count, $avg];
 }
 
-
 function render_avg_stars_html($avg, $count) {
     $remaining = floatval($avg);
     $parts = [];
@@ -232,14 +231,10 @@ function render_avg_stars_html($avg, $count) {
 
 function calculate_trending_score($video, $comments, $rating_avg, $rating_count) {
   $age_hours = max(1, (time() - strtotime($video['time'])) / 3600);
-
   $views_rate = $video['views'] / pow($age_hours, 1.2);
-
   $comments_score = $comments * 2;
   $rating_score = $rating_avg * log(1 + $rating_count) * 10;
-
   $fresh_bonus = ($age_hours < 24) ? 50 : 0;
-
   return $views_rate + $comments_score + $rating_score + $fresh_bonus;
 }  
 
@@ -252,7 +247,6 @@ if (isset($_SESSION['user']) && isset($home_block_type) && $home_block_type === 
         $stmt->bindValue(1, (int)$scan_limit, PDO::PARAM_INT);
         $stmt->execute();
         $view_rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
         $picked = [];
         $ordered_ids = [];
         foreach ($view_rows as $vr) {
@@ -264,18 +258,15 @@ if (isset($_SESSION['user']) && isset($home_block_type) && $home_block_type === 
             $ordered_ids[] = $vid;
             if (count($ordered_ids) >= 30) break;
         }
-
         if (!empty($ordered_ids)) {
             $in = implode(',', array_fill(0, count($ordered_ids), '?'));
             $stmtV = $db->prepare("SELECT * FROM videos WHERE id IN ($in) AND (private = 0 OR private IS NULL)");
             $stmtV->execute($ordered_ids);
             $videos_rows = $stmtV->fetchAll(PDO::FETCH_ASSOC) ?: [];
-
             $by_id = [];
             foreach ($videos_rows as $vr) {
                 $by_id[(int)$vr['id']] = $vr;
             }
-
             $recent_videos = [];
             foreach ($ordered_ids as $vid) {
                 if (!isset($by_id[$vid])) continue;
@@ -302,14 +293,6 @@ if (empty($recent_videos)) {
 $recent_videos = array_values(array_filter($recent_videos, function($v) {
     return !is_user_shadow_banned($v['user'] ?? '');
 }));
-
-$page = isset($_GET['page']) ? intval($_GET['page']) : 1;
-$per_page = 5;
-$offset = ($page - 1) * $per_page;
-
-$stmt = $db->query("SELECT COUNT(*) FROM videos");
-$total = $stmt->fetchColumn();
-$total_pages = ceil($total / $per_page);
 
 $stmt = $db->query("SELECT * FROM videos WHERE private = 0 ORDER BY id DESC LIMIT 600");
 $newest_pool = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -404,831 +387,196 @@ $featured_videos = array_slice($featured_videos, 0, 10);
 showHeader("Главная");
 ?>
 
-<?php
-$tags_mode = isset($_GET['p']) ? (string)$_GET['p'] : '';
-if ($tags_mode === 'tags') {
-    $latestLimit = 200;
-    $stmtLatest = $db->query("SELECT tags FROM videos WHERE private = 0 AND tags IS NOT NULL AND tags != '' AND " . visible_video_sql_condition('videos', 'user') . " ORDER BY id DESC LIMIT " . intval($latestLimit));
-    $latest_counts = [];
-    while ($row = $stmtLatest->fetch(PDO::FETCH_ASSOC)) {
-        $tags = preg_split('/\s+/', trim((string)($row['tags'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
-        foreach ($tags as $tag) {
-            $tag = trim((string)$tag);
-            if ($tag === '') continue;
-            if (!isset($latest_counts[$tag])) $latest_counts[$tag] = 0;
-            $latest_counts[$tag]++;
-        }
-    }
-    
-    $latest_top = array_slice($latest_counts, 0, 50, true);
-    $latest_min_count = !empty($latest_top) ? min($latest_top) : 1;
-    $latest_max_count = !empty($latest_top) ? max($latest_top) : 1;
-    $latest_base_font_size = 12;
-    $latest_max_font_size = 17;
-
-    $stmt = $db->query("SELECT tags FROM videos WHERE private = 0 AND tags IS NOT NULL AND tags != '' AND " . visible_video_sql_condition('videos', 'user'));
-    $popular_counts = [];
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $tags = preg_split('/\s+/', trim((string)($row['tags'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
-        foreach ($tags as $tag) {
-            $tag = trim((string)$tag);
-            if ($tag === '') continue;
-            if (!isset($popular_counts[$tag])) $popular_counts[$tag] = 0;
-            $popular_counts[$tag]++;
-        }
-    }
-    arsort($popular_counts);
-    $popular_top = array_slice($popular_counts, 0, 50, true);
-    $popular_min_count = !empty($popular_top) ? min($popular_top) : 1;
-    $popular_max_count = !empty($popular_top) ? max($popular_top) : 1;
-
-    ?>
-    <div style="padding: 10px 0 0 0;">
-        <div class="tableSubTitle">Теги</div>
-        <div style="font-size: 14px; font-weight: bold; color: #666666; margin-bottom: 10px;">Последние теги //</div>
-        <div style="margin-bottom: 20px; font-size: 13px; color: #333333;">
-            <?php if (!empty($latest_top)): ?>
-                <?php
-                $latest_base_font_size = 12;
-                $latest_max_font_size = 28;
-                $latest_min_count = !empty($latest_top) ? min($latest_top) : 1;
-                $latest_max_count = !empty($latest_top) ? max($latest_top) : 1;
-
-                $i = 0;
-                foreach ($latest_top as $tag => $count):
-                    if ($latest_max_count != $latest_min_count) {
-                        $ratio = (sqrt($count) - sqrt($latest_min_count)) / (sqrt($latest_max_count) - sqrt($latest_min_count));
-                        $font_size = round($latest_base_font_size + ($latest_max_font_size - $latest_base_font_size) * $ratio);
-                    } else {
-                        $font_size = $latest_base_font_size;
-                    }
-                ?>
-                    <?php if ($i > 0) echo ' : '; $i++; 
-                    $display_tag = (mb_strlen($tag) > 20) 
-                        ? mb_substr($tag, 0, 20)
-                        : $tag;
-                    ?>
-                    <a style="font-size: <?=$font_size?>px;" href="results.php?search_type=tag&search_query=<?=urlencode($tag)?>">
-                        <?=htmlspecialchars($tag)?>
-                    </a>
-                <?php endforeach; ?>
-                    :
-            <?php else: ?>
-                <div style="font-size: 12px; color: #000;"><i>Тегов пока нет!</i></div>
-            <?php endif; ?>
+<div class="guide-layout-container enable-fancy-subscribe-button">
+    <div class="guide-container">
+        <?php if (!isset($_SESSION['user'])): ?>
+        <div id="guide-builder-promo">
+            <h2>Sign in to add channels to your homepage</h2>
+            <div id="guide-builder-promo-buttons" class="signed-out">
+                <button type="button" class="yt-uix-button yt-uix-button-dark" onclick="window.location.href='login.php';" role="button"><span class="yt-uix-button-content">Sign In</span></button>
+                <button type="button" class="yt-uix-button yt-uix-button-primary" onclick="window.location.href='register.php';" role="button"><span class="yt-uix-button-content">Create Account</span></button>
+            </div>
         </div>
-
-        <div style="font-size: 16px; font-weight: bold; color: #666666; margin-bottom: 10px;">Популярные теги //</div>
-        <div style="font-size: 13px; color: #333333;">
-            <?php if (!empty($popular_top)): ?>
-                <?php $i = 0; $popular_base_font_size = 12; $popular_max_font_size = 28; ?>
-                <?php foreach ($popular_top as $tag => $count): ?>
-                    <?php
-                    if ($popular_max_count > $popular_min_count) {
-                        $ratio = ($count - $popular_min_count) / ($popular_max_count - $popular_min_count);
-                        $font_size = round($popular_base_font_size + ($popular_max_font_size - $popular_base_font_size) * $ratio);
-                    } else {
-                        $font_size = $popular_base_font_size;
-                    }
-                    ?>
-                    <?php if ($i > 0) echo ' : '; $i++; 
-                    $display_tag = (mb_strlen($tag) > 20) 
-                        ? mb_substr($tag, 0, 20)
-                        : $tag;
-                    ?>
-                    <a style="font-size: <?=$font_size?>px;" href="results.php?search_type=tag&search_query=<?=urlencode($tag)?>"><?=htmlspecialchars($tag)?></a>
-                <?php endforeach; ?>
-                    :
-            <?php else: ?>
-                <div style="font-size: 12px; color: #000;"><i>Тегов пока нет!</i></div>
-            <?php endif; ?>
+        <?php endif; ?>
+        
+        <div class="guide" data-last-clicked-item="feed-system-youtube">
+            <div class="guide-section yt-uix-expander first">
+                <h3 class="guide-item-container selected-child">
+                    <a class="guide-item selected" href="#">
+                        <span class="thumb">
+                            <img src="img/pixel.gif" alt="" class="system-icon category">
+                        </span>
+                        <span class="display-name">From YouTube</span>
+                    </a>
+                </h3>
+                <ul>
+                    <li class="guide-item-container"><a class="guide-item" href="results.php?search_query=trending"><span class="thumb"><img class="system-icon system trending" src="img/pixel.gif" alt=""></span><span class="display-name">Trending</span></a></li>
+                    <li class="guide-item-container"><a class="guide-item" href="results.php?search_query=popular"><span class="thumb"><img class="system-icon system popular" src="img/pixel.gif"alt=""></span><span class="display-name">Popular</span></a></li>
+                    <li class="guide-item-container"><a class="guide-item" href="results.php?search_query=music"><span class="thumb"><img class="system-icon system music" src="img/pixel.gif" alt=""></span><span class="display-name">Music</span></a></li>
+                    <li class="guide-item-container"><a class="guide-item" href="results.php?search_query=entertainment"><span class="thumb"><img class="system-icon chart entertainment" src="img/pixel.gif" alt=""></span><span class="display-name">Entertainment</span></a></li>
+                    <li class="guide-item-container"><a class="guide-item" href="results.php?search_query=sports"><span class="thumb"><img class="system-icon chart sports" src="img/pixel.gif" alt=""></span><span class="display-name">Sports</span></a></li>
+                    <li class="guide-item-container"><a class="guide-item" href="results.php?search_query=comedy"><span class="thumb"><img class="system-icon chart comedy" src="img/pixel.gif" alt=""></span><span class="display-name">Comedy</span></a></li>
+                    <li class="guide-item-container"><a class="guide-item" href="results.php?search_query=film"><span class="thumb"><img class="system-icon chart film" src="img/pixel.gif" alt=""></span><span class="display-name">Film &amp; Animation</span></a></li>
+                    <li class="guide-item-container"><a class="guide-item" href="results.php?search_query=gaming"><span class="thumb"><img class="system-icon chart gadgets" src="img/pixel.gif" alt=""></span><span class="display-name">Gaming</span></a></li>
+                </ul>
+                <div class="guide-item-container">
+                    <span class="guide-item guide-item-action guide-item-fake">
+                        <a href="channel.php">see all<img src="img/pixel.gif" class="see-more-arrow" alt=""></a>
+                    </span>
+                </div>
+            </div>
         </div>
     </div>
-    <?php
-    showFooter();
-    exit;
-}
-?>
+    <div class="guide-background"></div>
 
-<?php if (isset($_GET['error']) && $_GET['error'] === 'video_not_found'): ?>
-  <div class="errorBox">Видео не найдено.</div>
-<?php endif; ?>
-
-<?php if (isset($_GET['error']) && $_GET['error'] === 'video_not_allowed'): ?>
-  <div class="errorBox">Видео не найдено или у вас нет прав для его редактирования.</div>
-<?php endif; ?>
-
-<?php if (isset($_GET['info']) && $_GET['info'] === 'video_converting'): ?>
-  <div class="confirmBox">Ваше видео конвертируется! Скоро он будет доступно к просмотру.</div>
-<?php endif; ?>
-
-<?php if (isset($_GET['admin_msg']) && $_GET['admin_msg'] === 'author_banned'): ?>
-  <div class="confirmBox">Автор забанен, канал и все его видео удалены.</div>
-<?php endif; ?>
-
-<style>
-.vfacets { margin: 5px 0; }
-.vtagLabel { font-size: 11px; color: #888; display: inline; }
-.vtagValue { display: inline; margin-left: 5px; }
-
-.vtagValue .dg,
-.vtagValue .dg:visited {
-  color: #333;
-  text-decoration: underline;
-}
-
-.vtagValue .dg:hover {
-  color: #333;
-  text-decoration: underline;
-}
-
-</style>
-
-<table width="790" align="center" cellpadding="0" cellspacing="0" border="0">
-	<tbody><tr valign="top">
-		<td style="padding-right: 9px;">
-		
-		<table width="595" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#E5ECF9">
-			<tbody><tr>
-				<td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-				<td width="100%"><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-			</tr>
-			<tr>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-				<td style="padding: 5px 0px 5px 0px;">
-				
-        <?php if (isset($_SESSION['user'])): ?>
-				<table width="100%" cellpadding="0" cellspacing="0" border="0">
-					<tbody><tr valign="top">
-					<td width="50%" style="border-right: 1px dashed #369; padding: 0px 10px 2px 10px; color: #444;">
-                    <div style="font-size: 16px; font-weight: bold; color: #003366; margin-bottom: 10px;">Мой аккаунт</div>
-                    <div style="margin-bottom: 5px; font-size: 13px;"><b>Имя пользователя:</b> <a href="channel.php?user=<?php echo urlencode($_SESSION['user']); ?>"><?php echo htmlspecialchars($_SESSION['user'], ENT_QUOTES, 'UTF-8'); ?></a></div>
-                    <div style="margin-bottom: 5px; font-size: 13px;"><b>Email:</b> <?php echo htmlspecialchars($account_email !== '' ? $account_email : '-', ENT_QUOTES, 'UTF-8'); ?></div>
-                    <div style="margin-bottom: 5px; font-size: 13px;"><b>Видео просмотрено:</b> <?php echo (int)$account_videos_watched; ?></div>
-
-
-                    <table border="0" cellpadding="0" cellspacing="5" width="100%">
-                    <tr>
-                      <td width="33%" bgcolor="#FFFFFF" align="center" style="padding: 4px 3px;">
-                        <a href="channel.php?user=<?php echo urlencode($current_user); ?>&tab=videos" style="color: #0033CC; font-size: 14px;">Видео: <?php echo (int)$account_videos_count; ?></a><br>
-                        <font size="1" color="#555555">
-                          Просмотров: <?php echo (int)$video_views; ?><br>
-                          * Фанатов: <?php echo (int)$account_fans_count; ?>
-                        </font>
-                      </td>
-                      <td width="33%" bgcolor="#FFFFFF" align="center" valign="top" style="padding: 4px 3px;">
-                        <a href="favourites.php?user=<?php echo urlencode($current_user); ?>" style="color: #0033CC; font-size: 14px;">Избранных: <?php echo (int)$account_favourites_count; ?></a>
-                      </td>
-                      <td width="33%" bgcolor="#FFFFFF" align="center" style="padding: 4px 3px;">
-                        <a href="friends.php?user=<?php echo urlencode($current_user); ?>" style="color: #0033CC; font-size: 14px;">Друзей: <?php echo (int)$friends_count; ?></a><br>
-                        <font style="font-size: 10px;">
-                          <div style="margin-top: 1px;">
-                            <a href="friends.php?user=<?php echo urlencode($current_user); ?>">Видео</a> (<?php echo (int)$account_friends_videos_count; ?>)<br>
-                            <a href="friends.php?user=<?php echo urlencode($current_user); ?>">Избранные</a> (<?php echo (int)$account_friends_favourites_count; ?>)
-                          </div>
-                        </font>
-                      </td>
-
-                    </tr>
-                    </table>
-
-                    <div style="margin-top: 10px; margin-bottom: 0px; line-height: 1.0;"><span class="small">* Количество пользователей, добавивших ваши видео в избранное</span></div>
-					</td>
-					<td width="33%" style="padding: 0px 10px 10px 10px; color: #444;">
-					<img src="<?= htmlspecialchars($account_mail_icon, ENT_QUOTES, 'UTF-8') ?>" width="14" height="10" border="0"> У вас <a href="my_messages.php"><?= (int)$account_unread_mail ?> новых сообщений</a>.
-          <br>
-          <div style="margin-top: 5px; margin-bottom: 5px;"><span class="highlight">ToDo...</span></div>
-          <img src="img/icon_todo.gif" style="vertical-align: text-bottom; padding-left: 2px; padding-right: 1px;"> <a href="my_friends_invite.php">Пригласите своих друзей</a>
-          <br>
-          <img src="img/icon_todo.gif" style="vertical-align: text-bottom; padding-left: 2px; padding-right: 1px;"> <a href="account.php">Кастомизируйте свой профиль</a>
-					</td>
-					</tr>
-				</tbody></table>
-        <?php else: ?>
-
-        
-        <table width="100%" cellpadding="0" cellspacing="0" border="0">
-					<tbody><tr valign="top">
-					<td width="33%" style="border-right: 1px dashed #369; padding: 0px 10px 10px 10px; color: #444;">
-					<div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;"><a href="channel.php">Смотрите</a></div>
-					Мгновенно находите и смотрите тысячи видео.
-					</td>
-					<td width="33%" style="border-right: 1px dashed #369; padding: 0px 10px 10px 10px; color: #444;">
-					<div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;"><a href="upload.php">Загружайте</a></div>
-					Быстро загружайте видео практически в любом формате.
-					</td>
-					<td width="33%" style="padding: 0px 10px 10px 10px; color: #444;">
-					<div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;"><a href="my_friends_invite.php">Делитесь</a></div>
-					Легко делитесь своими видео с семьей, друзьями или коллегами.
-					</td>
-					</tr>
-				</tbody></table>
-        <?php endif; ?>
-
-									
-				</td>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-			</tr>
-			<tr>
-				<td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_br.gif" width="5" height="5"></td>
-			</tr>
-		</tbody></table>
-        
-        <?php
-        if (isset($_SESSION['user']) && $show_recs_block):
-        $recs_videos = [];
-        try {
-            $recs_user = isset($_SESSION['user']) ? (string)$_SESSION['user'] : null;
-            $recs_ip = isset($_SERVER['REMOTE_ADDR']) ? (string)$_SERVER['REMOTE_ADDR'] : '';
-            $recs_videos = recs_get_home_recommendations($db, $recs_user, $recs_ip, 12);
-        } catch (Exception $e) {
-            $recs_videos = [];
-        }
-        $recs_total = count($recs_videos);
-        if ($recs_total > 0):
-        ?>
-        <table class="roundedTable" width="585" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="margin-bottom: 0px; margin-top: 5px;">
-			<tbody><tr>
-				<td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-				<td width="100%"><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-			</tr>
-			<tr>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-				<td width="575">
-                    <div style="padding-left: 10px; padding-right: 10px;">
-                        <table width="571" height="28" cellpadding="0" cellspacing="0" border="0" background="img/MediumGenericTab.jpg">
-                            <tbody><tr>
-                                <td width="370">
-                                    <span style="padding-left: 5px; font-size: 13px; color: #6D6D6D; font-weight: bold; padding-right: 5px;">Рекомендованное для вас</span>
-                                    <span style="font-size: 10px; color: #999999;"><span id="counter_recs_for_you">[1 - <?=min(4,$recs_total)?> из <?=$recs_total?>]</span></span>
-                                </td>
-                                <td align="left"><span style="font-size: 13px; color: #6D6D6D;"><span></span></span></td>
-                                <td align="right">
-                                    <span style="padding-right: 10px; padding-left: 10px;">
-                                        <img src="img/icon_todo.gif" border="0" width="23" height="14" style="padding-right: 5px; vertical-align: middle;">
-                                        <a href="channel.php?filter=recs">Больше похожих видео...</a>
-                                    </span>
-                                </td>
-                            </tr></tbody>
-                        </table>
-                    </div>
-
-                    <div style="padding-left: 1px; text-align:center;">
-                        <table width="21" height="121" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
-                            <tbody><tr>
-                                <td><a href="javascript:void(0);" onclick="return recsGo(-1);" style="display:block; cursor:default;"><img src="img/LeftTableArrowWhite.jpg" width="21" height="121" border="0" alt="" style="cursor:default;"></a></td>
-                                <td>
-                                    <table width="548" height="121" align="center" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFFFFF; border-bottom: 1px solid #D0D0D0;">
-                                        <tbody><tr>
-                                            <?php for ($slot = 0; $slot < 4; $slot++): ?>
-                                            <td width="25%" align="center" valign="top">
-                                                <?php
-                                                $idx = $slot;
-                                                if ($idx < $recs_total):
-                                                    $rv = $recs_videos[$idx];
-                                                    $rid = (int)($rv['id'] ?? 0);
-                                                    $rpid = (string)($rv['public_id'] ?? $rid);
-                                                    $rt = (string)($rv['title'] ?? '');
-                                                    $rt_short = (function_exists('mb_strlen') && mb_strlen($rt, 'UTF-8') > 18) ? mb_substr($rt, 0, 18, 'UTF-8') . '...' : $rt;
-                                                    $rts = strtotime((string)($rv['time'] ?? ''));
-                                                    $rago = ($rts !== false && $rts > 0) ? time_ago((int)$rts) : 'только что';
-                                                ?>
-                                                <div id="recs_item_<?=$slot?>" style="display:block;">
-                                                    <div style="margin-top: 8px;">
-                                                        <a href="video.php?id=<?=htmlspecialchars($rpid, ENT_QUOTES, 'UTF-8')?>"><img src="<?=htmlspecialchars((string)($rv['preview'] ?? ''), ENT_QUOTES, 'UTF-8')?>" width="80" height="60" border="0" style="border:1px solid #CCC;"></a>
-                                                    </div>
-                                                    <div style="font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #666666; padding-bottom: 3px;">
-                                                        <a href="video.php?id=<?=htmlspecialchars($rpid, ENT_QUOTES, 'UTF-8')?>" title="<?=htmlspecialchars($rt, ENT_QUOTES, 'UTF-8')?>"><?=htmlspecialchars($rt_short, ENT_QUOTES, 'UTF-8')?></a>
-                                                    </div>
-                                                    <div style="font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #666666; padding-bottom: 3px;">
-                                                        <?=htmlspecialchars($rago, ENT_QUOTES, 'UTF-8')?>
-                                                    </div>
-                                                </div>
-                                                <?php else: ?>
-                                                &nbsp;
-                                                <?php endif; ?>
-                                            </td>
-                                            <?php endfor; ?>
-                                        </tr></tbody>
-                                    </table>
-                                </td>
-                                <td><a href="javascript:void(0);" onclick="return recsGo(1);" style="display:block; cursor:default;"><img src="img/RightTableArrowWhite.jpg" width="21" height="121" border="0" alt="" style="cursor:default;"></a></td>
-                            </tr></tbody>
-                        </table>
-                    </div>
-
-                    <script type="text/javascript">
-                    var recsTotal = <?= (int)$recs_total ?>;
-                    var recsPerPage = 4;
-                    var recsPage = 0;
-                    var recsData = [
-                        <?php
-                        $jsParts = [];
-                        foreach ($recs_videos as $rv) {
-                            $rid = (int)($rv['id'] ?? 0);
-                            $rpid = (string)($rv['public_id'] ?? $rid);
-                            $rt = (string)($rv['title'] ?? '');
-                            $rt_short = (function_exists('mb_strlen') && mb_strlen($rt, 'UTF-8') > 18) ? mb_substr($rt, 0, 18, 'UTF-8') . '...' : $rt;
-                            $rts = strtotime((string)($rv['time'] ?? ''));
-                            $rago = ($rts !== false && $rts > 0) ? time_ago((int)$rts) : 'только что';
-                            $jsParts[] = "{id:'" . addslashes($rpid) . "',p:'" . addslashes((string)($rv['preview'] ?? '')) . "',t:'" . addslashes($rt) . "',ts:'" . addslashes($rt_short) . "',ago:'" . addslashes($rago) . "'}";
-                        }
-                        echo implode(",\n", $jsParts);
-                        ?>
-                    ];
-                    function recsGet(id) {
-                        if (document.getElementById) return document.getElementById(id);
-                        if (document.all) return document.all[id];
-                        return null;
-                    }
-                    function recsRender() {
-                        var start = recsPage * recsPerPage;
-                        if (start < 0) start = 0;
-                        if (start >= recsTotal) start = 0;
-                        for (var i = 0; i < recsPerPage; i++) {
-                            var slot = recsGet('recs_item_' + i);
-                            if (!slot) continue;
-                            var idx = start + i;
-                            if (idx >= recsTotal) {
-                                slot.innerHTML = '&nbsp;';
-                                continue;
-                            }
-                            var v = recsData[idx];
-                            var vid = (typeof encodeURIComponent !== 'undefined') ? encodeURIComponent(v.id) : escape(v.id);
-                            slot.innerHTML =
-                                '<div style="margin-top: 8px;">' +
-                                '<a href="video.php?id=' + vid + '"><img src="' + v.p + '" width="80" height="60" border="0" style="border:1px solid #CCC;"></a>' +
-                                '</div>' +
-                                '<div style="font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #666666; padding-bottom: 3px;">' +
-                                '<a href="video.php?id=' + vid + '" title="' + v.t + '">' + v.ts + '</a>' +
-                                '</div>' +
-                                '<div style="font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #666666; padding-bottom: 3px;">' +
-                                v.ago +
-                                '</div>';
-                        }
-                        var c = recsGet('counter_recs_for_you');
-                        if (c) {
-                            var a = start + 1;
-                            var b = start + recsPerPage;
-                            if (b > recsTotal) b = recsTotal;
-                            c.innerHTML = '[' + a + ' - ' + b + ' из ' + recsTotal + ']';
-                        }
-                    }
-                    function recsShift(dir) {
-                        var pages = Math.ceil(recsTotal / recsPerPage);
-                        if (pages < 1) pages = 1;
-                        recsPage = recsPage + dir;
-                        if (recsPage < 0) recsPage = pages - 1;
-                        if (recsPage >= pages) recsPage = 0;
-                        recsRender();
-                    }
-                    function recsGo(dir) {
-                        recsShift(dir);
-                        return false;
-                    }
-                    recsRender();
-                    </script>
-				</td>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-			</tr>
-			<tr>
-				<td valign="bottom"><img src="img/box_login_bl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td valign="bottom"><img src="img/box_login_br.gif" width="5" height="5"></td>
-			</tr>
-		</tbody></table>
-        <?php endif; ?>
-        <?php endif; ?>
-		<?php if (!empty($recent_videos)): ?>
-		<div style="padding: 10px 0px 10px 0px;">
-		<table width="595" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEEEDD">
-			<tbody><tr>
-				<td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-			</tr>
-			<tr>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-				<td width="585">
-				<div style="padding: 2px 5px 8px 5px;">
-				<div style="font-size: 14px; font-weight: bold; color: #666633;"><?= ($recent_block_mode === 'recent_viewed') ? 'Недавно просмотренные...' : 'Недавно добавленные...' ?></div>
-				
-				<table width="100%" align="center" cellpadding="0" cellspacing="0" border="0">
-				<tbody><tr>
-							
-						<?php 
-						$count = 0;
-						foreach ($recent_videos as $video): 
-							if ($count >= 5) break;
-						?>
-						<td width="20%" align="center">
-		
-						<a href="video.php?id=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>"><img src="<?= $video['preview'] ?>" width="80" height="60" style="border: 5px solid #FFFFFF; margin-top: 10px;"></a>
-						<div class="moduleFeaturedDetails" style="padding-top: 2px;">
-<?php
-$ago_ts = ($recent_block_mode === 'recent_viewed' && !empty($video['last_viewed_at']))
-    ? (int)$video['last_viewed_at']
-    : strtotime($video['time']);
-echo time_ago($ago_ts);
-?>
-</div>
-		
-						</td>
-						<?php 
-							$count++;
-						endforeach; 
-						?>
-										</tr>
-				</tbody></table>
-				
-				</div>
-				</td>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-			</tr>
-			<tr>
-				<td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_br.gif" width="5" height="5"></td>
-			</tr>
-		</tbody></table>
-		</div>
-		<?php endif; ?>
-		
-		<table width="595" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#CCCCCC">
-			<tbody><tr>
-				<td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-				<td width="100%"><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-			</tr>
-			<tr>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-				<td width="585">
-				<div class="moduleTitleBar">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0">
-    <tr>
-      <td style="font-size:14px; font-weight:bold; color:#444; text-align:left; padding-left: 5px;  padding-bottom: 5px;">Популярные видео сегодня</td>
-      <td style="text-align:right; font-size:12px; padding-right:5px; padding-bottom: 7px; white-space:nowrap;">
-		<nobr><a href="channel.php"><b>Больше видео</b></a></nobr>
-		</td>
-    </tr>
-  </table>
-  
-</div>
-
-		
-				<?php
-                foreach ($featured_videos as $item):
-                    $video = $item['video'];
-                    $desc = htmlspecialchars($video['description']);
-                    $desc_short = mb_strlen($desc) > 30 ? mb_substr($desc, 0, 30) . '...' : $desc;
-                    $comments_count = 0;
-                    try {
-                        $stmtCc = $db->prepare("SELECT COUNT(*) FROM comments WHERE video_id = ?");
-                        $stmtCc->execute([$video['id']]);
-                        $comments_count = (int)$stmtCc->fetchColumn();
-                    } catch (Exception $e) {
-                        $comments_count = 0;
-                    }
-					list($rc, $ra) = get_home_rating_stats($db, $video['id']);
-                ?>
-                <div style="background-color:#DDD; background-image:url('img/table_results_bg.gif'); background-position:left top; background-repeat:repeat-x; border-bottom:1px dashed #999999; padding:10px;">
-                  <table width="565" cellpadding="0" cellspacing="0" border="0">
-                    <tr valign="top">
-                      <td width="120" valign="top"><a href="video.php?id=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>"><img src="<?= $video['preview'] ?>" class="moduleFeaturedThumb" width="120" height="90" style="margin: 0px 2px 0px 0px; display:block;"></a></td>
-                      <td width="100%" style="padding-left:8px;">
-						<div class="moduleEntryTitle">
-							<a href="video.php?id=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>"><?= htmlspecialchars($video['title']) ?></a>
-						</div>
-                        <?php
-                        $desc_id = 'desc_' . $video['id'];
-                        $desc_full = nl2br($desc);
-                        ?>
-                        <div class="moduleEntryDescription">
-                        <span id="<?= $desc_id ?>-short">
-                          <?= $desc_short ?><?php if (mb_strlen($desc) > 30): ?> <a href="#" onclick="return showDescMore('<?= $desc_id ?>');" style="color:#0033cc; font-size:11px;">(ещё)</a><?php endif; ?>
-                        </span>
-                        <span id="<?= $desc_id ?>-full" style="display:none;">
-                          <?= $desc_full ?> <a href="#" onclick="return showDescless('<?= $desc_id ?>');" style="color:#0033cc; font-size:11px;">(меньше)</a>
-                        </span>
-                        <?php if (!empty($video['tags'])): ?>
-                        <div class="vfacets">
-                            <div class="moduleEntryTags">Теги //
-                              <span class="vidTagsBegin-<?=$video['id']?>">
-                                    <?php 
-                                    $tags = preg_split('/\s+/', trim($video['tags'] ?? ''), -1, PREG_SPLIT_NO_EMPTY);
-                                    $visible_tags = array_slice($tags, 0, 5);
-                                    $hidden_tags = array_slice($tags, 5);
-                                    
-                                    foreach ($visible_tags as $tag): 
-                                      $tag = trim($tag);
-                                      if (!empty($tag)):
-                                    ?>
-                                      <a href="results.php?search_type=tag&search_query=<?=urlencode($tag)?>"><?=htmlspecialchars($tag)?></a> : 
-                                    <?php 
-                                      endif;
-                                    endforeach; 
-                                    
-                                    if (!empty($hidden_tags)):
-                                    ?>
-                                    <span id="vidTagsRemain-<?=$video['id']?>" style="display: none;">
-                                      <?php foreach ($hidden_tags as $tag): 
-                                        $tag = trim($tag);
-                                        if (!empty($tag)):
-                                      ?><a href="results.php?search_type=tag&search_query=<?=urlencode($tag)?>"><?=htmlspecialchars($tag)?></a> : <?php 
-                                        endif;
-                                      endforeach; 
-                                      ?></span>&nbsp;<span id="vidTagsMore-<?=$video['id']?>" class="smallText">(<a href="#" class="eLink" onclick="showInline('vidTagsRemain-<?=$video['id']?>'); hideInline('vidTagsMore-<?=$video['id']?>'); showInline('vidTagsLess-<?=$video['id']?>'); return false;">ещё</a>)</span><span id="vidTagsLess-<?=$video['id']?>" class="smallText" style="display: none;">(<a href="#" class="eLink" onclick="hideInline('vidTagsRemain-<?=$video['id']?>'); hideInline('vidTagsLess-<?=$video['id']?>'); showInline('vidTagsMore-<?=$video['id']?>'); return false;">меньше</a>)</span>
-                                    <?php endif; ?>
+    <div id="video-sidebar">
+        <h3 class="sidebar-module-header">Spotlight</h3>
+        <?php if (!empty($featured_videos)): ?>
+        <h2><?= htmlspecialchars($featured_videos[0]['video']['title'] ?? 'Featured Video') ?></h2>
+        <p class="sidebar-module-description">
+            <?= htmlspecialchars(mb_substr($featured_videos[0]['video']['description'] ?? '', 0, 150)) ?>...
+        </p>
+        <ul>
+            <?php for ($i = 0; $i < min(4, count($featured_videos)); $i++): $video = $featured_videos[$i]['video']; ?>
+            <li class="video-list-item">
+                <a href="watch?v=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>" class="video-list-item-link">
+                    <span class="ux-thumb-wrap contains-addto">
+                        <span class="video-thumb ux-thumb yt-thumb-default-120">
+                            <span class="yt-thumb-clip">
+                                <span class="yt-thumb-clip-inner">
+                                    <img src="<?= htmlspecialchars($video['preview'] ?? 'img/default.jpg') ?>" alt="<?= htmlspecialchars($video['title'] ?? '') ?>" width="120">
+                                    <span class="vertical-align"></span>
                                 </span>
-                            </div>
-                        <?php endif; ?>
-                        <div class="moduleEntryDetails">
-                          Добавлено: <?= time_ago(strtotime($video['time'])) ?> от <a href="channel.php?user=<?= htmlspecialchars($video['user']) ?>" style="color:#0033cc; text-decoration:underline;"><?= htmlspecialchars($video['user']) ?></a>
-                        </div>
-                        <div class="moduleEntryDetails">
-                          Время: <?=get_video_duration_fast($video['file'], $video['id'], $video['public_id'] ?? '')?> | Просмотров: <?= intval($video['views']) ?> | Комментариев: <?= intval($comments_count) ?>
-                        </div>
-						<?= render_avg_stars_html($ra, $rc) ?>
-                      </td>
-                    </tr>
-                  </table>
-                </div>
-                <?php endforeach; ?>					
-				</td>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-			</tr>
-			<tr>
-				<td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_br.gif" width="5" height="5"></td>
-			</tr>
-		</tbody></table>
-		
-		
-		</td>
-		<td width="180">
-		
-		<table width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFEEBB">
-			<tbody><tr>
-				<td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-			</tr>
-			<tr>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-				<td width="170">
-		
-								
-				<div style="font-size: 16px; font-weight: bold; text-align: center; padding: 5px 5px 10px 5px;"><a href="register.php">Зарегистрируйтесь бесплатно!</a></div>
-				
-								
-				</td>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-			</tr>
-			<tr>
-				<td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_br.gif" width="5" height="5"></td>
-			</tr>
-      
-		</tbody></table>
-
-    <?php if ($contest): ?>
-    <div style="margin-top: 10px;">
-		<table width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFCC99">
-			<tbody><tr>
-				<td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-			</tr>
-			<tr>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-				<td width="170" style="padding: 5px; text-align: center;">
-				<div style="font-weight: bold; font-size: 13px;">Сентябрьский конкурс!</div>
-				
-				<a href="#"><img src="" width="80" height="60" style="border: 5px solid #FFFFFF; margin-top: 10px;"></a>
-				
-				<div style="font-size: 16px; font-weight: bold; padding-top: 5px;"><a href="monthly_contest.php">ИМЯ!</a></div>
-				<div style="font-size: 11px; padding: 10px 0px 5px 0px;">RetroShow представляет наш первый ежемесячный конкурс видео!</div>
-				
-								
-				<div style="font-size: 12px; font-weight: bold; margin-bottom: 5px;"><a href="<?= isset($_SESSION['user']) ? 'monthly_contest.php' : 'signup.php' ?>">Присоединяйтесь к конкурсу сейчас!</a></div>
-				
-								
-				</td>
-				<td><img src="img/pixel.gif" width="5" height="1"></td>
-			</tr>
-			<tr>
-				<td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-				<td><img src="img/pixel.gif" width="1" height="5"></td>
-				<td><img src="img/box_login_br.gif" width="5" height="5"></td>
-			</tr>
-		</tbody></table>
-		</div>
-    <?php endif; ?>
-
-        
-        
-        <?php
-        $tags_mode = isset($_GET['p']) ? (string)$_GET['p'] : '';
-
-        $latestLimit = 200;
-        $stmtLatest = $db->query("SELECT tags FROM videos WHERE private = 0 AND tags IS NOT NULL AND tags != '' AND " . visible_video_sql_condition('videos', 'user') . " ORDER BY id DESC LIMIT " . intval($latestLimit));
-        $latest_counts = [];
-        while ($row = $stmtLatest->fetch(PDO::FETCH_ASSOC)) {
-            $tags = preg_split('/\s+/', trim((string)($row['tags'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
-            foreach ($tags as $tag) {
-                $tag = trim((string)$tag);
-                if ($tag === '') continue;
-                if (!isset($latest_counts[$tag])) $latest_counts[$tag] = 0;
-                $latest_counts[$tag]++;
-            }
-        }
-        $latest_top = array_slice($latest_counts, 0, 50, true);
-
-        $latest_min_count = !empty($latest_top) ? min($latest_top) : 1;
-        $latest_max_count = !empty($latest_top) ? max($latest_top) : 1;
-        $latest_base_font_size = 12;
-        $latest_max_font_size = 18;
-
-        $popular_top = [];
-        $popular_min_count = 1;
-        $popular_max_count = 1;
-        if ($tags_mode === 'tags') {
-            $stmt = $db->query("SELECT tags FROM videos WHERE private = 0 AND tags IS NOT NULL AND tags != '' AND " . visible_video_sql_condition('videos', 'user'));
-            $all_tags = [];
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $tags = preg_split('/\s+/', trim((string)($row['tags'] ?? '')), -1, PREG_SPLIT_NO_EMPTY);
-                foreach ($tags as $tag) {
-                    $tag = trim((string)$tag);
-                    if ($tag === '') continue;
-                    if (!isset($all_tags[$tag])) $all_tags[$tag] = 0;
-                    $all_tags[$tag]++;
-                }
-            }
-            arsort($all_tags);
-            $popular_top = array_slice($all_tags, 0, 50, true);
-            $popular_min_count = !empty($popular_top) ? min($popular_top) : 1;
-            $popular_max_count = !empty($popular_top) ? max($popular_top) : 1;
-        }
-        ?>
-
-        <?php if ($tags_mode === 'tags'): ?>
-          <div class="tableSubTitle">Tags</div>
-
-          <div style="font-size: 14px; font-weight: bold; color: #666666; margin-bottom: 10px;">Latest Tags //</div>
-          <div style="margin-bottom: 20px; font-size: 13px; color: #333333;">
-            <?php if (!empty($latest_top)): ?>
-              <?php $i = 0; foreach ($latest_top as $tag => $count): ?>
-                <?php
-                if ($latest_max_count > $latest_min_count) {
-                    $ratio = ($count - $latest_min_count) / ($latest_max_count - $latest_min_count);
-                    $font_size = round($latest_base_font_size + ($latest_max_font_size - $latest_base_font_size) * $ratio);
-                } else {
-                    $font_size = $latest_base_font_size;
-                }
-                ?>
-                <?php if ($i > 0) echo ' : '; $i++; ?>
-                <a style="font-size: <?=$font_size?>px;" href="results.php?search_type=tag&search_query=<?=urlencode($tag)?>"><?=htmlspecialchars($tag)?></a>
-              <?php endforeach; ?>
-            <?php else: ?>
-              <div style="font-size: 12px; color: #000;"><i>Тегов пока нет!</i></div>
-            <?php endif; ?>
-          </div>
-
-          <div style="font-size: 16px; font-weight: bold; color: #666666; margin-bottom: 10px;">Most Popular Tags //</div>
-          <div style="font-size: 13px; color: #333333;">
-            <?php if (!empty($popular_top)): ?>
-              <?php $i = 0; $popular_base_font_size = 12; $popular_max_font_size = 28; foreach ($popular_top as $tag => $count): ?>
-                <?php
-                if ($popular_max_count > $popular_min_count) {
-                    $ratio = ($count - $popular_min_count) / ($popular_max_count - $popular_min_count);
-                    $font_size = round($popular_base_font_size + ($popular_max_font_size - $popular_base_font_size) * $ratio);
-                } else {
-                    $font_size = $popular_base_font_size;
-                }
-                ?>
-                <?php if ($i > 0) echo ' : '; $i++; ?>
-                <a style="font-size: <?=$font_size?>px;" href="results.php?search_type=tag&search_query=<?=urlencode($tag)?>"><?=htmlspecialchars($tag)?></a>
-              <?php endforeach; ?>
-            <?php else: ?>
-              <div style="font-size: 12px; color: #000;"><i>Тегов пока нет!</i></div>
-            <?php endif; ?>
-          </div>
-        <?php else: ?>
-          <div style="margin: 10px 0px 5px 0px; font-size: 12px; font-weight: bold; color: #333;">Недавние теги:</div>
-          <div style="font-size: 13px; color: #333333;">
-              <?php if (!empty($latest_top)): ?>
-                  <?php
-                  $latest_base_font_size = 12;
-                  $latest_max_font_size = 18;
-                  $latest_min_count = !empty($latest_top) ? min($latest_top) : 1;
-                  $latest_max_count = !empty($latest_top) ? max($latest_top) : 1;
-
-                  $i = 0;
-                  foreach ($latest_top as $tag => $count):
-                      if ($latest_max_count != $latest_min_count) {
-                          $ratio = (sqrt($count) - sqrt($latest_min_count)) / (sqrt($latest_max_count) - sqrt($latest_min_count));
-                          $font_size = round($latest_base_font_size + ($latest_max_font_size - $latest_base_font_size) * $ratio);
-                      } else {
-                          $font_size = $latest_base_font_size;
-                      }
-                  ?>
-                      <?php if ($i > 0) echo ' : '; $i++; 
-                      $display_tag = (mb_strlen($tag) > 20) 
-                          ? mb_substr($tag, 0, 20)
-                          : $tag;
-                      ?>
-                      <a style="font-size: <?=$font_size?>px;" href="results.php?search_type=tag&search_query=<?=urlencode($tag)?>">
-                          <?=htmlspecialchars($display_tag)?>
-                      </a>
-                  <?php endforeach; ?>
-                  :
-              <?php else: ?>
-                  <div style="font-size: 12px; color: #000;"><i>Тегов пока нет!</i></div>
-              <?php endif; ?>
-          </div>
-          <div style="font-size: 14px; font-weight: bold; margin-top: 10px;">
-            <a href="index.php?p=tags">Больше тегов</a>
-          </div>
+                            </span>
+                        </span>
+                        <span class="video-time"><?= get_video_duration_fast($video['file'], $video['id'], $video['public_id'] ?? '') ?></span>
+                    </span>
+                    <span dir="ltr" class="title" title="<?= htmlspecialchars($video['title'] ?? '') ?>"><?= htmlspecialchars(mb_substr($video['title'] ?? '', 0, 50)) ?></span>
+                    <span class="stat">by <span class="yt-user-name" dir="ltr"><?= htmlspecialchars($video['user'] ?? '') ?></span></span>
+                    <span class="stat view-count"><span class="viewcount"><?= number_format($video['views'] ?? 0) ?> views</span></span>
+                </a>
+            </li>
+            <?php endfor; ?>
+        </ul>
         <?php endif; ?>
-        
-        <?php
-        $stmt = $db->prepare("SELECT login, COALESCE(last_login, 0) as last_login FROM users u WHERE NOT EXISTS (SELECT 1 FROM channel_moderation cm WHERE cm.user = u.login AND cm.shadow_banned = 1) ORDER BY last_login DESC, id DESC LIMIT 8");
-        $stmt->execute();
-        $online_users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $count_user_videos = function($u) use ($db) {
-            $q = $db->prepare("SELECT COUNT(*) FROM videos WHERE user = ? AND private = 0");
-            $q->execute([$u]);
-            return (int)$q->fetchColumn();
-        };
-        $count_user_favorites = function($u) use ($db) {
-            $q = $db->prepare("SELECT COUNT(*) FROM user_favourites WHERE user = ?");
-            $q->execute([$u]);
-            return (int)$q->fetchColumn();
-        };
-        $count_user_friends = function($u) use ($db) {
-            $q = $db->prepare("SELECT COUNT(*) FROM user_friends WHERE user = ?");
-            $q->execute([$u]);
-            return (int)$q->fetchColumn();
-        };
-        ?>
-        <div style="margin-top:20px;">
-          <table class="roundedTable" width="180" align="center" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEEEDD">
-            <tbody>
-            <tr>
-              <td><img src="img/box_login_tl.gif" width="5" height="5"></td>
-              <td width="100%"><img src="img/pixel.gif" width="1" height="5"></td>
-              <td><img src="img/box_login_tr.gif" width="5" height="5"></td>
-            </tr>
-            <tr>
-              <td><img src="img/pixel.gif" width="5" height="1"></td>
-              <td width="170">
-                <div style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color:#666633;">Последние 8 каналов...</div>
-                <?php foreach ($online_users as $iuser): $u = $iuser['login']; $vnum = $count_user_videos($u); $fnum = $count_user_favorites($u); $frnum = $count_user_friends($u); ?>
-                  <div style="font-size: 12px; font-weight: bold; margin-bottom: 5px;"><a href="channel.php?user=<?=urlencode($u)?>"><?=htmlspecialchars($u)?></a></div>
-                  <div style="font-size: 12px; margin-bottom: 8px; padding-bottom: 10px; border-bottom: 1px dashed #CCCC66;">
-                    <a href="channel.php?user=<?=urlencode($u)?>"><img src="img/icon_vid.gif" alt="Videos" width="14" height="14" border="0" style="vertical-align: text-bottom; padding-left: 2px; padding-right: 1px;"></a> (<a href="channel.php?user=<?=urlencode($u)?>&tab=videos"><?=$vnum?></a>)
-                     | <a href="favourites.php?user=<?=urlencode($u)?>"><img src="img/icon_fav.gif" alt="Favorites" width="14" height="14" border="0" style="vertical-align: text-bottom; padding-left: 2px; padding-right: 1px;"></a> (<a href="favourites.php?user=<?=urlencode($u)?>"><?=$fnum?></a>)
-                     | <a href="friends.php?user=<?=urlencode($u)?>"><img src="img/icon_friends.gif" alt="Friends" width="14" height="14" border="0" style="vertical-align: text-bottom; padding-left: 2px; padding-right: 1px;"></a> (<a href="friends.php?user=<?=urlencode($u)?>"><?=$frnum?></a>)
-                  </div>
-                <?php endforeach; ?>
-                <div style="font-weight: bold; margin-bottom: 5px;">Иконки означают:</div>
-                <div style="margin-bottom: 4px;"><img src="img/icon_vid.gif" alt="Videos" width="14" height="14" border="0" style="vertical-align: text-bottom; padding-left: 2px; padding-right: 1px;"> - Видео</div>
-                <div style="margin-bottom: 4px;"><img src="img/icon_fav.gif" alt="Favorites" width="14" height="14" border="0" style="vertical-align: text-bottom; padding-left: 2px; padding-right: 1px;"> - Избранное</div>
-                <img src="img/icon_friends.gif" alt="Friends" width="14" height="14" border="0" style="vertical-align: text-bottom; padding-left: 2px; padding-right: 1px;"> - Друзья
-              </td>
-              <td><img src="img/pixel.gif" width="5" height="1"></td>
-            </tr>
-            <tr>
-              <td><img src="img/box_login_bl.gif" width="5" height="5"></td>
-              <td><img src="img/pixel.gif" width="1" height="5"></td>
-              <td><img src="img/box_login_br.gif" width="5" height="5"></td>
-            </tr>
-            </tbody></table>
+        <h3>Featured</h3>
+        <ul>
+            <?php 
+            $featured_sidebar = array_slice($featured_videos, 4, 3);
+            foreach ($featured_sidebar as $item): $video = $item['video']; ?>
+            <li class="video-list-item">
+                <a href="watch?v=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>" class="video-list-item-link yt-uix-sessionlink">
+                    <span class="ux-thumb-wrap contains-addto">
+                        <span class="video-thumb ux-thumb yt-thumb-default-120">
+                            <span class="yt-thumb-clip">
+                                <span class="yt-thumb-clip-inner">
+                                    <img src="<?= htmlspecialchars($video['preview'] ?? 'img/default.jpg') ?>" alt="<?= htmlspecialchars($video['title'] ?? '') ?>" width="120">
+                                    <span class="vertical-align"></span>
+                                </span>
+                            </span>
+                        </span>
+                        <span class="video-time"><?= get_video_duration_fast($video['file'], $video['id'], $video['public_id'] ?? '') ?></span>
+                    </span>
+                    <span dir="ltr" class="title" title="<?= htmlspecialchars($video['title'] ?? '') ?>"><?= htmlspecialchars(mb_substr($video['title'] ?? '', 0, 50)) ?></span>
+                    <span class="stat">by <span class="yt-user-name" dir="ltr"><?= htmlspecialchars($video['user'] ?? '') ?></span></span>
+                    <span class="stat view-count"><span class="viewcount"><?= number_format($video['views'] ?? 0) ?> views</span></span>
+                </a>
+            </li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+
+    <div id="feed">
+        <div id="feed-system-youtube" class="individual-feed" data-loaded="true" data-feed-name="youtube" data-feed-type="system" style="opacity: 1;">
+            <div class="feed-header no-metadata">
+                <div class="feed-header-thumb">
+                    <img class="feed-header-icon youtube" src="img/pixel.gif" alt="">
+                </div>
+                <div class="feed-header-details">
+                    <h2>From YouTube</h2>
+                </div>
+            </div>
+
+            <div class="feed-container" data-filter-type="" data-view-type="">
+                <div class="feed-page">
+                    <ul>
+                        <?php foreach ($featured_videos as $item): $video = $item['video']; 
+                        $comments_count = 0;
+                        try {
+                            $stmtCc = $db->prepare("SELECT COUNT(*) FROM comments WHERE video_id = ?");
+                            $stmtCc->execute([$video['id']]);
+                            $comments_count = (int)$stmtCc->fetchColumn();
+                        } catch (Exception $e) {}
+                        list($rc, $ra) = get_home_rating_stats($db, $video['id']);
+                        $video_time = strtotime($video['time']);
+                        $time_ago_str = $video_time ? time_ago($video_time) : 'недавно';
+                        ?>
+                        <li>
+                            <div class="feed-item-container yt-uix-expander yt-uix-expander-collapsed">
+                                <div class="feed-item-outer">
+                                    <div class="feed-item-main">
+                                        <div class="feed-item-thumb">
+                                            <a class="ux-thumb-wrap contains-addto yt-uix-sessionlink" href="watch?v=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>">
+                                                <span class="video-thumb ux-thumb yt-thumb-default-106">
+                                                    <span class="yt-thumb-clip">
+                                                        <span class="yt-thumb-clip-inner">
+                                                            <img src="<?= htmlspecialchars($video['preview'] ?? 'img/default.jpg') ?>" alt="Thumbnail" width="106">
+                                                            <span class="vertical-align"></span>
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                                <span class="video-time"><?= get_video_duration_fast($video['file'], $video['id'], $video['public_id'] ?? '') ?></span>
+                                            </a>
+                                        </div>
+                                        <div class="feed-item-time"><?= $time_ago_str ?></div>
+                                        <div class="feed-item-content">
+                                            <h4>
+                                                <a class="title yt-uix-sessionlink" href="watch?v=<?= htmlspecialchars($video['public_id'] ?? $video['id']) ?>" dir="ltr">
+                                                    <?= htmlspecialchars($video['title'] ?? '') ?>
+                                                </a>
+                                            </h4>
+                                            <div class="description">
+                                                <p><?= htmlspecialchars(mb_substr($video['description'] ?? '', 0, 150)) ?>...</p>
+                                            </div>
+                                            <div class="metadata">
+                                                <p>
+                                                    <a href="/user/<?= urlencode($video['user'] ?? '') ?>" class="yt-user-name" dir="ltr"><?= htmlspecialchars($video['user'] ?? '') ?></a>
+                                                    <span class="bull">•</span>
+                                                    <span class="view-count"><?= number_format($video['views'] ?? 0) ?> views</span>
+                                                </p>
+                                            </div>
+                                            <?= render_avg_stars_html($ra, $rc) ?>
+                                            <div class="feed-item-actions-line">
+                                                <span class="feed-item-author">
+                                                    <a href="/user/<?= urlencode($video['user'] ?? '') ?>" class="yt-user-photo">
+                                                        <span class="video-thumb ux-thumb yt-thumb-square-24">
+                                                            <span class="yt-thumb-clip">
+                                                                <span class="yt-thumb-clip-inner">
+                                                                    <img src="img/default_avatar.jpg" alt="<?= htmlspecialchars($video['user'] ?? '') ?>" width="24">
+                                                                    <span class="vertical-align"></span>
+                                                                </span>
+                                                            </span>
+                                                        </span>
+                                                    </a>
+                                                </span>
+                                                <span class="feed-item-owner">
+                                                    <a href="/user/<?= urlencode($video['user'] ?? '') ?>" class="yt-user-name" dir="ltr"><?= htmlspecialchars($video['user'] ?? '') ?></a>
+                                                </span> uploaded
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+            </div>
         </div>
-        
-		</td>
-	</tr>
-</tbody></table>
-<?php showFooter(); ?>
+    </div>
 
-<script type="text/javascript">
-function showDescMore(id) {
-  var s = document.getElementById(id+'-short');
-  var f = document.getElementById(id+'-full');
-  if (s && f) { s.style.display = 'none'; f.style.display = 'inline'; }
-  return false;
-}
-function showDescless(id) {
-  var s = document.getElementById(id+'-short');
-  var f = document.getElementById(id+'-full');
-  if (s && f) { f.style.display = 'none'; s.style.display = 'inline'; }
-  return false;
-}
-</script>
+    <div id="footer-ads"></div>
+</div>
+
+<?php showFooter(); ?>
