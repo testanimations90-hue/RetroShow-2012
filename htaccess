@@ -1,0 +1,82 @@
+# --- Настройки PHP ---
+<IfModule mod_php.c>
+    php_value upload_max_filesize 1000M
+    php_value post_max_size 1000M
+    php_value memory_limit 1000M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value max_file_uploads 1
+    php_value file_uploads On
+    php_value allow_url_fopen On
+    php_value output_buffering Off
+    php_value implicit_flush On
+    php_value max_input_vars 10000
+    php_value max_input_nesting_level 100
+    
+    php_value display_errors Off
+    php_value display_startup_errors Off
+    php_value log_errors On
+    php_value error_reporting 22519
+</IfModule>
+
+# --- Защита файлов (БД и логи) ---
+<Files "retroshow.db">
+    Order allow,deny
+    Deny from all
+    Require all denied
+</Files>
+
+<Files "retroshow.sqlite">
+    Order allow,deny
+    Deny from all
+    Require all denied
+</Files>
+
+<Files "log.txt">
+    Order allow,deny
+    Deny from all
+    Require all denied
+</Files>
+
+<FilesMatch "\.(sqlite|db|sqlite3)$">
+    Order allow,deny
+    Deny from all
+    Require all denied
+</FilesMatch>
+
+Options -Indexes
+
+# --- Обработка ошибок (404, 403, 504 и др.) ---
+ErrorDocument 403 /error.php
+ErrorDocument 404 /error.php
+ErrorDocument 500 /error.php
+ErrorDocument 504 /error.php
+
+# --- Правила перенаправлений (Маршрутизация) ---
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Защита файлов через rewrite (дублирует верхние правила для надежности)
+    RewriteRule retroshow\.sqlite$ - [F,NC]
+    RewriteRule \.(sqlite|db|sqlite3)$ - [F,NC]
+
+    # 1. ЧПУ для видео: watch?v=ID -> video.php?id=ID
+    RewriteCond %{QUERY_STRING} ^v=(.*)$
+    RewriteRule ^watch$ video.php?id=%1 [L]
+    # 1.5. ЧПУ для получения видео: get_watch?v=ID -> get_video.php?id=ID
+    RewriteCond %{QUERY_STRING} ^v=(.*)$
+    RewriteRule ^get_watch$ get_video.php?id=%1 [L]
+    # 2. ЧПУ для каналов без параметров: browse -> channel.php
+    RewriteRule ^browse/?$ channel.php [L,QSA]
+
+    # 3. ЧПУ для каналов пользователей: /user/Admin -> channel.php?user=Admin
+    RewriteRule ^user/([^/]+)/?$ channel.php?user=$1 [L,QSA]
+
+    # 4. ЧПУ для каналов пользователей напрямую: /Admin -> channel.php?user=Admin
+    # Исключаем из этого правила существующие файлы и папки (чтобы не сломать стили/картинки)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    # Исключаем системные слова, чтобы они не улетали в channel.php
+    RewriteCond $1 !(watch|browse|error\.php|index\.php|video\.php|channel\.php) [NC]
+    RewriteRule ^([^/]+)/?$ channel.php?user=$1 [L,QSA]
+</IfModule>
