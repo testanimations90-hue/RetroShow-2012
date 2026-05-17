@@ -1,0 +1,11 @@
+        <div class="player" id="playerBox">
+            <div class="mainContainer">
+                <div class="playerScreen">
+                    <div class="playbackArea">
+                        <div class="videoContainer">
+                            <video class="videoObject" id="video">
+                                <source src="get_watch?v=<?=htmlspecialchars($video['public_id'] ?? '')?>"> 
+                             </video>
+                        </div>
+                    </div>
+                </div>

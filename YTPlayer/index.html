@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Player</title>
-    <link rel="stylesheet" href="styles.css">
-    <script src="script.js" defer></script>
+    <link rel="stylesheet" href="YTPlayer/styles.css">
+    <script src="YTPlayer/script.js" defer></script>
   </head>
   <body>
     <div class="video-container paused" data-volume-level="high">
@@ -83,8 +83,8 @@
           </button>
         </div>
       </div>
-      <video src="assets/Video.mp4">
-        <track kind="captions" src="assets/subtitles.vtt" srclang="en" >
+      <video src="get_watch?v=<?=htmlspecialchars($video['public_id'] ?? '')?>">
+      <track kind="captions" src="" srclang="en" >
       </video>
     </div>
   </body>

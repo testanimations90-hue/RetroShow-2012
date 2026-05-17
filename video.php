@@ -1208,40 +1208,7 @@ if ($admin_confirm !== ''):
         <div id="flashPlayerBox" style="display:none; font-size:14px; font-weight: bold;"></div>
 
         <div class="player" id="playerBox">
-            <div class="mainContainer">
-                <div class="playerScreen">
-                    <div class="playbackArea">
-                        <div class="videoContainer">
-                            <video class="videoObject" id="video">
-                                <source src="get_watch?v=<?=htmlspecialchars($video['public_id'] ?? '')?>"> 
-                             </video>
-                        </div>
-                    </div>
-                </div>
-                <div class="controlBackground">
-                    <div class="controlContainer">
-                        <div class="lBtnContainer">
-                            <div class="button" id="playButton">
-                                <img src="viewfinder/resource/play.png" id="playIcon" class="">
-                                <img src="viewfinder/resource/pause.png" class="hidden" id="pauseIcon">
-                            </div>
-                        </div>
-                        <div class="centerContainer">
-                            <div class="seekbarElementContainer">
-                                <progress class="seekProgress" id="seekProgress" value="0" min="0" max="45"></progress>
-                            </div>
-                            <div class="seekbarElementContainer">
-                                <input class="seekHandle" id="seekHandle" value="0" min="0" step="1" type="range" max="45">
-                            </div>
-                        </div>
-                        <div class="rBtnContainer">
-                            <div class="button" id="muteButton">
-                                <img src="viewfinder/resource/unmute.png" class="hidden" id="muteIcon" alt="">
-                                <img src="viewfinder/resource/mute.png" id="unmuteIcon" alt="">
-                            </div>
-                        </div>
-                    </div>
-                </div>
+       <?php include 'YTPlayer/index.html' ?>
             </div>
             <div class="aboutBox hidden" id="aboutBox">
                 <div class="aboutBoxContent">

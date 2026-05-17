@@ -1,5 +1,4 @@
 *, *::before, *::after {
-  box-sizing: border-box;
 }
 
 body {
@@ -14,6 +13,7 @@ body {
   justify-content: center;
   margin-inline: auto;
   background-color: black;
+  overflow: hidden;
 }
 
 .video-container.theater,
