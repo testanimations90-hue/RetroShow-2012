@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <head>
+<base href="/">
 <title>Error</title>
 <link rel="stylesheet" type="text/css" href="img/yt2012.css">
 <link rel="stylesheet" type="text/css" href="img/error.css">
