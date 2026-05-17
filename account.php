@@ -2,6 +2,15 @@
 include "init.php";
 include_once "template.php";
 
+function RandomString($length = 11) {
+    $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    $randomString = '';
+    for ($i = 0; $i < $length; $i++) {
+        $randomString .= $characters[random_int(0, strlen($characters) - 1)];
+    }
+    return $randomString;
+}
+
 if (!isset($_SESSION['user'])) {
     header('Location: login.php');
     exit;
@@ -14,7 +23,7 @@ $pw_error = '';
 $pw_success = false;
 
 try {
-    $stmt = $db->prepare('SELECT email, about_me, gender, birthday_mon, birthday_day, birthday_yr, country, name, last_n, relationship, website, profile_bull, player_type, home_block_type, recs_enabled, header_logo, hometown, city FROM users WHERE login = ?');
+    $stmt = $db->prepare('SELECT email, about_me, gender, birthday_mon, birthday_day, birthday_yr, country, name, last_n, relationship, website, profile_bull, player_type, home_block_type, recs_enabled, header_logo, hometown, city, profile_icon_custom FROM users WHERE login = ?');
     $stmt->execute([$user]);
     $user_data = $stmt->fetch(PDO::FETCH_ASSOC);
 } catch (Exception $e) {
@@ -50,6 +59,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($header_logo !== 'youtube') {
         $header_logo = 'retroshow';
     }
+    if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
+        $uploadDir = 'uploads/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+    
+        $fileTmpPath = $_FILES['avatar']['tmp_name'];
+        $fileType = mime_content_type($fileTmpPath);
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    
+        if (in_array($fileType, $allowedTypes)) {
+            $fileExtension = pathinfo($_FILES['avatar']['name'], PATHINFO_EXTENSION);
+            $newFileName = RandomString(11) . '.' . $fileExtension;
+            $destPath = $uploadDir . $newFileName;
+        
+            if (move_uploaded_file($fileTmpPath, $destPath)) {
+                // если не дефолтная то рип
+                if (!empty($user_data['profile_icon_custom']) && $user_data['profile_icon_custom'] !== 'default') {
+                    $oldAvatarPath = $uploadDir . $user_data['profile_icon_custom'];
+                if (file_exists($oldAvatarPath)) {
+                    unlink($oldAvatarPath);
+                }
+            }
+            
+            $stmt = $db->prepare('UPDATE users SET profile_icon_custom = ? WHERE login = ?');
+            $stmt->execute(['uploads/' . $newFileName, $user]);
+            $user_data['profile_icon_custom'] = 'uploads/' . $newFileName;
+            $success = true;
+        } else {
+            $error = 'Ошибка при сохранении аватарки.';
+        }
+    } else {
+        $error = 'Разрешены только изображения JPG, PNG, GIF, WEBP.';
+    }
+}
+
+if (isset($_POST['delete_avatar']) && $_POST['delete_avatar'] === '1') {
+    if (!empty($user_data['profile_icon_custom']) && $user_data['profile_icon_custom'] !== 'default') {
+        $oldAvatarPath = 'uploads/' . $user_data['profile_icon_custom'];
+        if (file_exists($oldAvatarPath)) {
+            unlink($oldAvatarPath);
+        }
+    }
+    $stmt = $db->prepare('UPDATE users SET profile_icon_custom = NULL WHERE login = ?');
+    $stmt->execute([$user]);
+    $user_data['profile_icon_custom'] = NULL;
+    $success = true;
+}
     
     if (mb_strlen($about_me) > 500) $about_me = mb_substr($about_me, 0, 500);
     
@@ -123,7 +180,7 @@ showHeader('Настройки аккаунта');
 </style>
 <center>
 <div style="width:600px; text-align:left;">
-  <form method="post" action="account.php" style="margin:0;">
+  <form method="post" action="account.php" style="margin:0;" enctype="multipart/form-data">
     <table width="100%" border="0" cellspacing="0" cellpadding="0" style="font-family:Tahoma,Arial,sans-serif; font-size:13px; border-collapse:collapse;">
     <tr>
       <td colspan="5">
@@ -530,10 +587,41 @@ showHeader('Настройки аккаунта');
 			        <option value="ZM" <?= ($user_data['country'] ?? '') == 'ZM' ? 'selected' : '' ?>>Zambia</option>
 			        <option value="ZW" <?= ($user_data['country'] ?? '') == 'ZW' ? 'selected' : '' ?>>Zimbabwe</option>
 			</select>
-      </td>
-    </tr>
-  </table>
-</div>
+			<tr>
+			  <td colspan="5">
+ 			   <table width="100%" cellpadding="0" cellspacing="0" border="0">
+   			   <tr>
+   			     <td style="color:#CC6633; font-weight:bold; font-size:15px; padding-bottom:2px; padding-top:15px;" valign="middle">Аватарка</td>
+    			  </tr>
+   			 </table>
+  			</td>
+			</tr>
+			<tr>
+  			<td colspan="5"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px;"><tr><td height="1" bgcolor="#CCCCCC"></td></tr></table></td>
+			</tr>
+			<tr>
+  			<td width="120" style="font-size:13px; color:#333; padding-bottom:8px; vertical-align:top;"><b>Текущая аватарка:</b></td>
+ 			 <td style="font-size:13px; color:#222; padding-bottom:8px;" colspan="4">
+  			  <?php if (!empty($user_data['profile_icon_custom'])): ?>
+  			    <img src="<?=htmlspecialchars($user_data['profile_icon_custom'])?>" style="max-width:100px; max-height:100px; border:1px solid #ccc; padding:2px;">
+  			    <br>
+  			    <button type="submit" class="yt-uix-button yt-uix-button-size-default yt-uix-button-default search-btn-component search-button" name="delete_avatar" value="1" onclick="return confirm('Удалить аватарку?');">Удалить</button>
+   			 <?php else: ?>
+  			    <span style="color:#888;">Нет загруженной аватарки</span>
+   			 <?php endif; ?>
+ 			 </td>
+			</tr>
+			<tr>
+ 			 <td width="120" style="font-size:13px; color:#333; padding-bottom:8px; vertical-align:top;"><b>Загрузить новую:</b></td>
+  			<td style="font-size:13px; color:#222; padding-bottom:8px;" colspan="4">
+  			  <input type="file" name="avatar" accept="image/jpeg,image/png,image/gif,image/webp">
+   			 <br><font size="1px" color="#555555">(JPG, PNG, GIF, WEBP. Максимум 5MB)</font>
+ 			 </td>
+			</tr>
+   			   </td>
+  			  </tr>
+ 			 </table>
+			</div>
 
 <div style="width:600px; text-align:left;">
   <table width="100%" border="0" cellspacing="0" cellpadding="0" style="font-family:Tahoma,Arial,sans-serif; font-size:13px; border-collapse:collapse; table-layout:fixed;">
@@ -629,7 +717,7 @@ showHeader('Настройки аккаунта');
 <tr>
   <td></td>
   <td style="padding-bottom:8px;" colspan="4">
-    <input type="submit" value="Обновить профиль">
+    <input type="submit" class="yt-uix-button yt-uix-button-size-default yt-uix-button-default search-btn-component search-button value="Обновить профиль">
   </td>
 </tr>
 </table>
