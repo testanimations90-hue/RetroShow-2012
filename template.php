@@ -57,6 +57,7 @@ function showHeader($title = "RetroShow") {
 <link rel="stylesheet" href="img/guide.css" type="text/css">
 <link rel="stylesheet" href="img/watch.css" type="text/css">
 <link rel="stylesheet" href="img/channels.css" type="text/css">
+<link rel="stylesheet" href="img/player.css" type="text/css">
 <script type="text/javascript" src="img/ui_ets.js"></script>
 <link href="img/styles.css" rel="stylesheet" type="text/css">
 <link rel="alternate" type="application/rss+xml" title="Recently Added Videos" href="rss.php">
@@ -164,7 +165,7 @@ html, body {
               <span class="masthead-link-separator">|</span>
               <a class="end" href="login.php">Sign In</a>
             <?php else: ?>
-              Привет, <a href="/user/<?=urlencode($_SESSION['user'])?>"><?=htmlspecialchars($_SESSION['user'])?></a>!
+              Привет, <a href="/user/<?=urlencode($_SESSION['user'])?>"><?=htmlspecialchars($_SESSION['user'])?></a>! <a href="account.php">Аккаунт </a> <a href="logout.php">Выход</a>
             <?php endif; ?>
           </div>
         </div>
